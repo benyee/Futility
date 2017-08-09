@@ -354,7 +354,7 @@ extern "C" void Anderson_Solve(const int id) {
 extern "C" void TS_Init(int &id, void (*funptr)(), const int n,
                           const double tol) {
     Teuchos::ParameterList params;
-    id = tsweep->new_data(funptr, n, tol, parms);
+    id = tsweep->new_data(funptr, n, tol, params);
 }
 
 extern "C" void TS_Init_Params(int &id, void (*funptr)(), const int n,
@@ -362,7 +362,7 @@ extern "C" void TS_Init_Params(int &id, void (*funptr)(), const int n,
     auto plistDB = CTeuchos::getNonconstParameterListDB();
     Teuchos::Ptr<Teuchos::ParameterList> params =
         plistDB->getNonconstObjPtr(plist.id);
-    id = tsweep->new_data(funptr, n, tol, *parms);
+    id = tsweep->new_data(funptr, n, tol, *params);
 }
 
 extern "C" void TS_Destroy(const int id) {
@@ -370,8 +370,8 @@ extern "C" void TS_Destroy(const int id) {
 }
 
 extern "C" void TS_Step(const int id, const double tstart, const double tend,
-                        const double x[], double xdot[]) {
-    tsweep->step(id,tstart,tend,x,xdot);
+                        const int idS, const int idE) {
+    tsweep->step(id,tstart,tend,evec->get_vec(idS),evec->get_vec(idE));
 }
 
 #endif
