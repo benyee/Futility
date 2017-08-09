@@ -14,6 +14,7 @@
 #include "trilinos_mat_vec.hpp"
 #include "trilinos_pc.hpp"
 #include "trilinos_solvers.hpp"
+#include "trilinos_ts.hpp"
 #include <omp.h>
 #include "CTeuchos_ParameterList.h"
 #include "CTeuchos_ParameterList_Cpp.hpp"
@@ -26,6 +27,7 @@ Teuchos::RCP< BelosStore     > bels(new BelosStore);
 Teuchos::RCP< AndersonStore  > andr(new AndersonStore);
 Teuchos::RCP< JFNKStore      > jfnk(new JFNKStore);
 Teuchos::RCP< PCStore        > pcst(new PCStore);
+Teuchos::RCP< TimeStore      > tsst(new TSStore);
 
 //------------------------------------------------------------------------------
 // Vector
@@ -345,4 +347,31 @@ extern "C" void JFNK_Destroy(const int id) {
 extern "C" void Anderson_Solve(const int id) {
     jfnk->solve(id);
 }
+
+//------------------------------------------------------------------------------
+// Rythmos Time stepper
+//------------------------------------------------------------------------------
+extern "C" void TS_Init(int &id, void (*funptr)(), const int n,
+                          const double tol) {
+    Teuchos::ParameterList params;
+    id = tsweep->new_data(funptr, n, tol, parms);
+}
+
+extern "C" void TS_Init_Params(int &id, void (*funptr)(), const int n,
+                     const int double tol, CTeuchos_ParameterList_ID &plist) {
+    auto plistDB = CTeuchos::getNonconstParameterListDB();
+    Teuchos::Ptr<Teuchos::ParameterList> params =
+        plistDB->getNonconstObjPtr(plist.id);
+    id = tsweep->new_data(funptr, n, tol, *parms);
+}
+
+extern "C" void TS_Destroy(const int id) {
+    tsweep->delete_data(id);
+}
+
+extern "C" void TS_Step(const int id, const double tstart, const double tend,
+                        const double x[], double xdot[]) {
+    tsweep->step(id,tstart,tend,x,xdot);
+}
+
 #endif
