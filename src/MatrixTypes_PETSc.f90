@@ -143,10 +143,18 @@ MODULE MatrixTypes_PETSc
             CALL MatSetType(matrix%a,MATMPIAIJ,ierr)
           ELSEIF (matType == DENSESQUARE) THEN
             CALL MatSetType(matrix%a,MATMPIDENSE,ierr)
+          ELSEIF (matType == GRIDCHANGE) THEN
+            !for interpolation and restriction operators in multigrid
+#ifdef FUTILITY_HAVE_PETSC
+            CALL MatSetType(matrix%a,MATMAIJ,ierr)
+#else
+            CALL eMatrixType%raiseError('gridchange matrices are only'// &
+                  ' available with PETSc.')
+#endif
           ELSE
             CALL eMatrixType%raiseError('Invalid matrix type in '// &
-              modName//'::'//myName//' - Only sparse and dense square '// &
-              'matrices are available with PETSc.')
+              modName//'::'//myName//' - Only sparse, dense square '// &
+              'and gridchange matrices are available with PETSc.')
           ENDIF
 
           IF(MINVAL(dnnz) > 0_SIK .AND. MINVAL(onnz) > 0_SIK) THEN

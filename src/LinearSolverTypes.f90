@@ -298,6 +298,7 @@ MODULE LinearSolverTypes
       INTEGER(SIK) :: MPI_Comm_ID,numberOMP
       CHARACTER(LEN=256) :: timerName,ReqTPLTypeStr,TPLTypeStr,PreCondType
 #ifdef FUTILITY_HAVE_PETSC
+      KSP :: ksp_temp
       PC :: pc
       PetscErrorCode  :: iperr
 #endif
@@ -585,7 +586,9 @@ MODULE LinearSolverTypes
                 ENDSELECT
 
                 !Always use a nonzero initial guess:
-                CALL KSPSetInitialGuessNonzero(solver%ksp,PETSC_TRUE,iperr)
+                IF(solver%solverMethod /= MULTIGRID) &
+                  CALL KSPSetInitialGuessNonzero(solver%ksp,PETSC_TRUE,iperr)
+                !ZZZZ why doesnt this work for multigrid?
 
                 !set preconditioner
                 IF((solver%solverMethod == GMRES) .OR. (solver%solverMethod == BICGSTAB)) THEN
@@ -621,11 +624,11 @@ MODULE LinearSolverTypes
                 ELSEIF(solver%solverMethod == MULTIGRID) THEN
                   CALL KSPGetPC(solver%ksp,solver%pc,iperr)
                   CALL PCSetType(solver%pc,PCMG,iperr)
-                  !CALL PCSetFromOptions(solver%pc,iperr)
-                  CALL PCMGSetLevels(solver%pc,1,solver%MPIparallelEnv%comm); !ZZZZ use some sort of mpi thing here?
-                  CALL PCMGSetType(pc,PC_MG_MULTIPLICATIVE);
-                  CALL PCMGSetGalerkin(pc,PETSC_TRUE);
-                  WRITE(*,*) "YO!"
+                  CALL PCMGSetGalerkin(solver%pc,PETSC_TRUE,iperr)
+                  CALL PCMGSetLevels(solver%pc,1,PETSC_NULL_OBJECT,iperr) !TODO use some sort of mpi thing here?
+                  CALL PCMGGetSmoother(solver%pc,0,ksp_temp,iperr)
+                  CALL KSPSetType(ksp_temp,KSPGMRES,iperr)
+                  CALL KSPSetInitialGuessNonzero(ksp_temp,PETSC_TRUE,iperr)
                 ENDIF
                 CALL KSPSetFromOptions(solver%ksp,iperr)
 
