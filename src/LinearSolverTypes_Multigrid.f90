@@ -74,10 +74,8 @@ MODULE LinearSolverTypes_Multigrid
     LOGICAL(SBK) :: isMultigridSetup=.FALSE.
     !> Size of each grid level_info(level,:) = (/num_eqns,nx,ny,nz/)
     INTEGER(SIK),ALLOCATABLE :: level_info(:,:)
-#ifdef FUTILITY_HAVE_PETSC
-    !> Array of pointers to petsc interpolation matrices
-    Mat :: PetscInterpMats(max_levels)
-#endif
+    !> Array of pointers to interpolation matrices
+    TYPE(PETScMatrixType),ALLOCATABLE :: interpMats(:)
 
     CONTAINS
       !> @copybrief TODO
@@ -259,6 +257,7 @@ MODULE LinearSolverTypes_Multigrid
       KSP :: ksp_temp
       PC :: pc_temp
       PetscErrorCode  :: iperr
+      Mat :: mat_temp
 #endif
 
       IF(solver%isMultigridSetup) &
@@ -311,6 +310,7 @@ MODULE LinearSolverTypes_Multigrid
         nz_old=nz
         ALLOCATE(solver%level_info(solver%nLevels,4))
         solver%level_info(solver%nLevels,:)=(/num_eqns,nx,ny,nz/)
+        ALLOCATE(solver%interpMats(solver%nLevels-1))
         DO iLevel=solver%nLevels-1,1,-1
           !Set the smoother:
           CALL PCMGGetSmoother(solver%pc,iLevel,ksp_temp,iperr)
@@ -330,6 +330,7 @@ MODULE LinearSolverTypes_Multigrid
           n=nx*ny*nz*num_eqns
           CALL matPList%set('MatrixType->n',n_old)
           CALL matPList%set('MatrixType->m',n)
+          WRITE(*,*) "For level",iLevel,"matrix is size",n_old,n
           nnz=n
           IF(num_dims == 3) THEN
             nnz=nnz+((nx_old*ny_old*nz_old*num_eqns)-n)*6
@@ -394,15 +395,25 @@ MODULE LinearSolverTypes_Multigrid
           SELECTTYPE(interpmat); TYPE IS(PETScMatrixType)
             CALL interpmat%assemble()
             CALL PCMGSetInterpolation(solver%pc,iLevel,interpmat%a,iperr)
-            CALL MatDestroy(interpmat%a,iperr)
+            !CALL MatDestroy(interpmat%a,iperr)
+            solver%interpMats(iLevel)=interpmat
           ENDSELECT
-          DEALLOCATE(interpmat)
+          NULLIFY(interpmat)
         ENDDO
+        !DO iLevel=1,solver%nLevels-1
+        !  CALL MatView(solver%interpMats(iLevel)%a,PETSC_VIEWER_STDOUT_WORLD,iperr)
+        !ENDDO
+        SELECTTYPE(mytmpmat=>solver%A); TYPE IS(PETScMatrixType)
+          CALL mytmpmat%assemble()
+          CALL MatMatMult(mytmpmat%a,mytmpmat%a,MAT_INITIAL_MATRIX,PETSC_DEFAULT_INTEGER,mat_temp)
+          STOP
+          CALL MatView(mat_temp,PETSC_VIEWER_STDOUT_WORLD,iperr)
+        ENDSELECT
         !TODO determine coarsest smoother option
         !Set coarsest smoother options:
         CALL PCMGGetSmoother(solver%pc,0,ksp_temp,iperr)
         CALL KSPSetType(ksp_temp,KSPGMRES,iperr)
-        CALL KSPSetInitialGuessNonzero(ksp_temp,PETSC_TRUE,iperr)
+        !CALL KSPSetInitialGuessNonzero(ksp_temp,PETSC_TRUE,iperr)
 #endif
       ENDIF
       solver%isMultigridSetup=.TRUE.
@@ -425,13 +436,14 @@ MODULE LinearSolverTypes_Multigrid
 
       IF(solver%isMultigridSetup) THEN
         DO iLevel=1,solver%nLevels-1
-          !CALL MatDestroy(solver%PetscInterpMats(iLevel),iperr) !ZZZZ
+          CALL MatDestroy(solver%interpMats(iLevel),iperr) !ZZZZ
         ENDDO
       ENDIF
 #endif
 
       solver%isMultigridSetup=.FALSE.
       IF(ALLOCATED(solver%level_info)) DEALLOCATE(solver%level_info)
+      IF(ALLOCATED(solver%interpMats)) DEALLOCATE(solver%interpMats)
       solver%nLevels=1_SIK
 
       CALL solver%LinearSolverType_Iterative%clear()

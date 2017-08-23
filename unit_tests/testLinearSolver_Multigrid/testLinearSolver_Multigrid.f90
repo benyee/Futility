@@ -204,9 +204,17 @@ CONTAINS
     SUBROUTINE testSetupInterpMats()
       TYPE(LinearSolverType_Multigrid) :: thisLS
       INTEGER(SIK) :: ref_level_info(4,4)
+      REAL(SRK),ALLOCATABLE :: soln(:)
       INTEGER(SIK),PARAMETER :: n=65_SNK
 
       CALL init_MultigridLS(thisLS)
+
+      ! Create solution:
+      ALLOCATE(soln(n))
+      soln=1.0_SRK
+      soln(n/2)=2.0_SRK
+      CALL setupLinearProblem(thisLS,soln)
+
       CALL thisLS%setupInterpMats(pList)
 
       ref_level_info = RESHAPE((/1,1,1,1, &
@@ -225,50 +233,22 @@ CONTAINS
 !-------------------------------------------------------------------------------
     SUBROUTINE testIterativeSolve_Multigrid()
       TYPE(LinearSolverType_Multigrid) :: thisLS
-      REAL(SRK),ALLOCATABLE :: soln(:),b(:)
-      REAL(SRK),ALLOCATABLE :: A_temp(:,:)
+      REAL(SRK),ALLOCATABLE :: soln(:)
       REAL(SRK),POINTER :: x(:)
-      INTEGER(SIK) :: i
       LOGICAL(SBK) :: match
 
       INTEGER(SIK),PARAMETER :: n=65_SNK
 
 #ifdef FUTILITY_HAVE_PETSC
       CALL init_MultigridLS(thisLS)
-      CALL thisLS%setupInterpMats(pList)
-
-      !A is a tridiagonal system with -1 on the offdiagonals, and
-      !  2.5 on the diagonals.
-      ALLOCATE(A_temp(n,n))
-      A_temp=0.0_SRK
-      SELECTTYPE(A => thisLS%A); TYPE IS(PETScMatrixType)
-      DO i=1,n
-        IF(i > 1) THEN
-          CALL A%set(i,i-1,-1.0_SRK)
-          A_temp(i,i-1)=-1.0_SRK
-        ENDIF
-        CALL A%set(i,i,2.5_SRK)
-        A_temp(i,i)=2.5_SRK
-        IF(i < 1) THEN
-          CALL A%set(i,i+1,-1.0_SRK)
-          A_temp(i,i+1)=-1.0_SRK
-        ENDIF
-      ENDDO
-      ENDSELECT
 
       ! Create solution:
       ALLOCATE(soln(n))
       soln=1.0_SRK
       soln(n/2)=2.0_SRK
+      CALL setupLinearProblem(thisLS,soln)
 
-      ALLOCATE(b(n))
-      b=MATMUL(A_temp,soln)
-      DEALLOCATE(A_temp)
-
-      SELECTTYPE(LS_b => thisLS%b); TYPE IS(PETScVectorType)
-        CALL LS_b%setAll_array(b)
-      ENDSELECT
-      DEALLOCATE(b)
+      CALL thisLS%setupInterpMats(pList)
 
       ! build x0
       ALLOCATE(x(n))
@@ -324,6 +304,46 @@ CONTAINS
       !TODO make this test problem a coupled system of 2 equations
 
       CALL thisLS%init(pList)
+
+    ENDSUBROUTINE
+
+    SUBROUTINE setupLinearProblem(thisLS,soln)
+      TYPE(LinearSolverType_Multigrid),INTENT(INOUT) :: thisLS
+      REAL(SRK),INTENT(IN) :: soln(:)
+      REAL(SRK),ALLOCATABLE :: b(:)
+      REAL(SRK),ALLOCATABLE :: A_temp(:,:)
+      INTEGER(SIK) :: n
+      INTEGER(SIK) :: i
+
+      n=SIZE(soln)
+
+      !A is a tridiagonal system with -1 on the offdiagonals, and
+      !  2.5 on the diagonals.
+      ALLOCATE(A_temp(n,n))
+      A_temp=0.0_SRK
+      SELECTTYPE(A => thisLS%A); TYPE IS(PETScMatrixType)
+      DO i=1,n
+        IF(i > 1) THEN
+          CALL A%set(i,i-1,-1.0_SRK)
+          A_temp(i,i-1)=-1.0_SRK
+        ENDIF
+        CALL A%set(i,i,2.5_SRK)
+        A_temp(i,i)=2.5_SRK
+        IF(i < 1) THEN
+          CALL A%set(i,i+1,-1.0_SRK)
+          A_temp(i,i+1)=-1.0_SRK
+        ENDIF
+      ENDDO
+      ENDSELECT
+
+      ALLOCATE(b(n))
+      b=MATMUL(A_temp,soln)
+      DEALLOCATE(A_temp)
+
+      SELECTTYPE(LS_b => thisLS%b); TYPE IS(PETScVectorType)
+        CALL LS_b%setAll_array(b)
+      ENDSELECT
+      DEALLOCATE(b)
 
     ENDSUBROUTINE
 
