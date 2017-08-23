@@ -370,6 +370,10 @@ MODULE LinearSolverTypes_Multigrid
         CALL PCMGGetSmoother(solver%pc,0,ksp_temp,iperr)
         CALL KSPSetType(ksp_temp,KSPGMRES,iperr)
         CALL KSPSetInitialGuessNonzero(ksp_temp,PETSC_TRUE,iperr)
+        CALL PCMGGetSmoother(solver%pc,solver%nLevels-1,ksp_temp,iperr)
+        SELECTTYPE(tempA => solver%A); TYPE IS(PETScMatrixType)
+          CALL KSPSetOperators(ksp_temp,tempA%a,tempA%a,iperr)
+        ENDSELECT
 
         ALLOCATE(levelInfoForPetsc(solver%nLevels,5))
         levelInfoForPetsc(:,1:4)=solver%level_info
@@ -452,7 +456,7 @@ MODULE LinearSolverTypes_Multigrid
       !TODO account for odd grids
       DO inx=1,nx
         IF(XOR(MOD(inx,2)==1, (inx>nx/2 .AND. MOD(nx,2) == 0))) THEN
-          myzz(inx)=myxx((inx+1)/2-1)+myyy(inx)
+          myzz(inx)=myxx(inx/2+1)+myyy(inx)
         ELSE
           myzz(inx)=0.5*myxx(inx/2-1)+0.5*myxx(inx/2)+myyy(inx)
         ENDIF
