@@ -62,12 +62,7 @@ MODULE LinearSolverTypes_Multigrid
 #endif
 !
 ! List of public members
-  PUBLIC :: levelInfoForPetsc
   PUBLIC :: LinearSolverType_Multigrid
-#ifdef FUTILITY_HAVE_PETSC
-  PUBLIC :: interpolate_petsc
-  PUBLIC :: restrict_petsc
-#endif
 
   INTEGER(SIK),PARAMETER :: max_levels=8_SIK
 
@@ -91,17 +86,11 @@ MODULE LinearSolverTypes_Multigrid
       !> @copybrief TODO
       !> @copydetails TODO
       PROCEDURE,PASS :: setupInterpMats => setupInterpMats_LinearSolverType_Multigrid
-      !> @copybrief TODO
-      !> @copydetails TODO
-      PROCEDURE,PASS :: clear => clear_LinearSolverType_Multigrid
   ENDTYPE LinearSolverType_Multigrid
 
   !> Logical flag to check whether the required and optional parameter lists
   !> have been created yet for the Linear Solver Type.
   LOGICAL(SBK),SAVE :: LinearSolverType_Paramsflag=.FALSE.
-
-  !> Used by PETSc to get data from LinearSolverType_Multigrid
-  INTEGER(SIK),ALLOCATABLE :: levelInfoForPetsc(:,:)
 
   !> Name of module
   CHARACTER(LEN=*),PARAMETER :: modName='LINEARSOLVERTYPES_MULTIGRID'
@@ -264,6 +253,8 @@ MODULE LinearSolverTypes_Multigrid
       INTEGER(SIK) :: inx,iny,inz,inum_eqn
 
       REAL(SRK),INTENT(IN),OPTIONAL :: weights(:,:,:,:)
+      CLASS(MatrixType),POINTER :: interpmat => NULL()
+      TYPE(ParamType) :: matPList
 #ifdef FUTILITY_HAVE_PETSC
       KSP :: ksp_temp
       PC :: pc_temp
@@ -302,13 +293,19 @@ MODULE LinearSolverTypes_Multigrid
 
       IF(solver%TPLType == PETSC) THEN
 #ifdef FUTILITY_HAVE_PETSC
-        IF(ALLOCATED(levelInfoForPetsc)) &
-          CALL eLinearSolverType%raiseError(modName//"::"//myName//" - "// &
-                 'Only 1 PETSc LinearSolverType_Multigrid object permitted!')
 
         !Set # of levels:
         CALL PCMGSetLevels(solver%pc,solver%nLevels,PETSC_NULL_OBJECT,iperr) !TODO use some sort of mpi thing here?
 
+        CALL matPList%clear()
+        CALL matPList%add('MatrixType->matType',SPARSE)
+        CALL matPList%add('MatrixType->engine',VM_PETSC)
+        CALL matPList%add('MatrixType->n',n)
+        CALL matPList%add('MatrixType->m',n)
+        CALL matPList%add('MatrixType->nlocal',-1)
+        CALL matPList%add('MatrixType->nnz',1)
+        CALL matPList%add('MatrixType->MPI_Comm_ID',MPI_Comm_ID)
+        CALL matPList%add('MatrixType->isSym',.FALSE.)
         nx_old=nx
         ny_old=ny
         nz_old=nz
@@ -331,6 +328,8 @@ MODULE LinearSolverTypes_Multigrid
           IF(ny > 1) ny=ny/2+1
           IF(nz > 1) nz=nz/2+1
           n=nx*ny*nz*num_eqns
+          CALL matPList%set('MatrixType->n',n_old)
+          CALL matPList%set('MatrixType->m',n)
           nnz=n
           IF(num_dims == 3) THEN
             nnz=nnz+((nx_old*ny_old*nz_old*num_eqns)-n)*6
@@ -339,43 +338,71 @@ MODULE LinearSolverTypes_Multigrid
           ELSE
             nnz=nnz+((nx_old*num_eqns)-n)*2 !ZZZZ what about the 2->1 part
           ENDIF
-
-          IF(ny == 1 .AND. ny_old > 1) num_dims=num_dims-1
-          IF(nz == 1 .AND. nz_old > 1) num_dims=num_dims-1
+          CALL matPList%set('MatrixType->nnz',nnz)
 
           !To be used by the interp/restrict functions:
           solver%level_info(iLevel,:)=(/num_eqns,nx,ny,nz/)
+          !Initialize interp, then set its values ZZZZ
+          CALL MatrixFactory(interpmat,matPList)
           IF(.NOT. PRESENT(weights)) THEN !uniform weights will be used
-            !TODO determine nlocal for multiprocessor problems
-            CALL MatCreateShell(solver%MPIparallelEnv%comm, &
-                    n_old,n,n_old,n,PETSC_NULL_INTEGER, &
-                    solver%PetscInterpMats(iLevel),iperr)
-            CALL MatShellSetOperation(solver%PetscInterpMats(iLevel),MATOP_MULT, &
-                    restrict_petsc,iperr);
-            CALL MatShellSetOperation(solver%PetscInterpMats(iLevel), &
-                    MATOP_MULT_TRANSPOSE_ADD,interpolate_petsc,iperr);
-            CALL PCMGSetInterpolation(solver%pc,iLevel, &
-                    solver%PetscInterpMats(iLevel),iperr);
-            CALL PCMGSetRestriction(solver%pc,iLevel, &
-                    solver%PetscInterpMats(iLevel),iperr);
+            inx=1
+            iny=1
+            inz=1
+            inum_eqn=1
+            DO i=1,n_old
+              IF(num_dims > 2) THEN
+                !TODO
+              ELSEIF(num_dims > 1) THEN
+                !TODO !ZZZZ don't forget about the 2->1 part
+              ELSE
+                IF(XOR(MOD(inx,2)==1, (inx>nx/2 .AND. MOD(nx,2) == 0))) THEN
+                  CALL interpmat%set(i,((inx+1)/2-1)*num_eqns+inum_eqn,1.0_SRK)
+                  WRITE(*,*) "i,j=",i,((inx+1)/2-1)*num_eqns+inum_eqn
+                ELSE
+                  CALL interpmat%set(i,(inx/2-1)*num_eqns+inum_eqn,0.5_SRK)
+                  WRITE(*,*) "i,j 2=",i,((inx)/2-1)*num_eqns+inum_eqn
+                  CALL interpmat%set(i,(inx/2)*num_eqns+inum_eqn,0.5_SRK)
+                  WRITE(*,*) "i,j 2=",i,((inx)/2)*num_eqns+inum_eqn
+                ENDIF
+              ENDIF
+
+              !Track where we are:
+              inum_eqn=inum_eqn+1
+              IF(inum_eqn > num_eqns) THEN
+                inum_eqn=1
+                inx=inx+1
+              ENDIF
+              IF(inx>nx_old) THEN
+                inx=1
+                iny=iny+1
+              ENDIF
+              IF(iny>ny_old) THEN
+                iny=1
+                inz=inz+1
+              ENDIF
+            ENDDO
           ELSE
             !TODO
             CALL eLinearSolverType%raiseError(modName//"::"//myName//" - "// &
               "Nonuniform multigrid weights not implemented yet.")
           ENDIF
 
+          IF(ny == 1 .AND. ny_old > 1) num_dims=num_dims-1
+          IF(nz == 1 .AND. nz_old > 1) num_dims=num_dims-1
+
+          !Set the interpolation operator:
+          SELECTTYPE(interpmat); TYPE IS(PETScMatrixType)
+            CALL interpmat%assemble()
+            CALL PCMGSetInterpolation(solver%pc,iLevel,interpmat%a,iperr)
+            CALL MatDestroy(interpmat%a,iperr)
+          ENDSELECT
+          DEALLOCATE(interpmat)
         ENDDO
         !TODO determine coarsest smoother option
         !Set coarsest smoother options:
         CALL PCMGGetSmoother(solver%pc,0,ksp_temp,iperr)
         CALL KSPSetType(ksp_temp,KSPGMRES,iperr)
         CALL KSPSetInitialGuessNonzero(ksp_temp,PETSC_TRUE,iperr)
-
-        ALLOCATE(levelInfoForPetsc(solver%nLevels,5))
-        levelInfoForPetsc(:,1:4)=solver%level_info
-        DO i=1,solver%nLevels
-          levelInfoForPetsc(i,5)=PRODUCT(levelInfoForPetsc(i,1:4))
-        ENDDO
 #endif
       ENDIF
       solver%isMultigridSetup=.TRUE.
@@ -405,112 +432,10 @@ MODULE LinearSolverTypes_Multigrid
 
       solver%isMultigridSetup=.FALSE.
       IF(ALLOCATED(solver%level_info)) DEALLOCATE(solver%level_info)
-      IF(ALLOCATED(levelInfoForPetsc)) DEALLOCATE(levelInfoForPetsc)
       solver%nLevels=1_SIK
 
       CALL solver%LinearSolverType_Iterative%clear()
 
     ENDSUBROUTINE clear_LinearSolverType_Multigrid
-
-#ifdef FUTILITY_HAVE_PETSC
-! TODO
-    SUBROUTINE interpolate_petsc(mat,xx,yy,zz,iperr)
-      Mat :: mat
-      Vec :: xx
-      Vec :: yy
-      Vec :: zz
-      PetscErrorCode :: iperr
-
-      INTEGER(SIK) :: probsize
-      INTEGER(SIK) :: iLevel,nLevels
-      INTEGER(SIK) :: num_eqns,nx,ny,nz,nx_c,ny_c,nz_c
-      INTEGER(SIK) :: inum_eqns,inx,iny,inz
-      INTEGER(SIK) :: inx_f,iny_f,inz_f
-
-      REAL(SRK),POINTER :: myxx(:),myyy(:),myzz(:)
-
-      CALL VecGetSize(xx,probsize,iperr)
-
-      nLevels=SIZE(levelInfoForPetsc,1)
-      DO iLevel=1,nLevels
-        IF(levelInfoForPetsc(iLevel,5)==probsize) EXIT
-      ENDDO
-
-      num_eqns=levelInfoForPetsc(iLevel,1)
-      nx=levelInfoForPetsc(iLevel,2)
-      ny=levelInfoForPetsc(iLevel,3)
-      nz=levelInfoForPetsc(iLevel,4)
-      nx_c=levelInfoForPetsc(iLevel-1,2)
-      ny_c=levelInfoForPetsc(iLevel-1,3)
-      nz_c=levelInfoForPetsc(iLevel-1,4)
-
-      CALL VecGetArrayF90(xx,myxx,iperr)
-      CALL VecGetArrayF90(yy,myyy,iperr)
-      CALL VecGetArrayF90(zz,myzz,iperr)
-
-      !TODO expand to higher num_eqns, ny, nz
-      !TODO account for odd grids
-      DO inx=1,nx
-        IF(XOR(MOD(inx,2)==1, (inx>nx/2 .AND. MOD(nx,2) == 0))) THEN
-          myzz(inx)=myxx((inx+1)/2-1)+myyy(inx)
-        ELSE
-          myzz(inx)=0.5*myxx(inx/2-1)+0.5*myxx(inx/2)+myyy(inx)
-        ENDIF
-      ENDDO
-
-      CALL VecRestoreArrayF90(xx,myxx,iperr)
-      CALL VecRestoreArrayF90(yy,myyy,iperr)
-      CALL VecRestoreArrayF90(zz,myzz,iperr)
-
-    ENDSUBROUTINE
-! TODO
-    SUBROUTINE restrict_petsc(mat,rr,bb,iperr)
-      Mat :: mat
-      Vec :: rr
-      Vec :: bb
-      PetscErrorCode :: iperr
-
-      INTEGER(SIK) :: probsize
-      INTEGER(SIK) :: iLevel,nLevels
-      INTEGER(SIK) :: num_eqns,nx,ny,nz,nx_c,ny_c,nz_c
-      INTEGER(SIK) :: inum_eqns,inx,iny,inz
-      INTEGER(SIK) :: inx_f,iny_f,inz_f
-
-      REAL(SRK),POINTER :: myrr(:),mybb(:)
-
-      CALL VecGetSize(rr,probsize,iperr)
-
-      nLevels=SIZE(levelInfoForPetsc,1)
-      DO iLevel=1,nLevels
-        IF(levelInfoForPetsc(iLevel,5)==probsize) EXIT
-      ENDDO
-
-      num_eqns=levelInfoForPetsc(iLevel,1)
-      nx=levelInfoForPetsc(iLevel,2)
-      ny=levelInfoForPetsc(iLevel,3)
-      nz=levelInfoForPetsc(iLevel,4)
-      nx_c=levelInfoForPetsc(iLevel-1,2)
-      ny_c=levelInfoForPetsc(iLevel-1,3)
-      nz_c=levelInfoForPetsc(iLevel-1,4)
-
-      CALL VecGetArrayF90(rr,myrr,iperr)
-      CALL VecGetArrayF90(bb,mybb,iperr)
-
-      !TODO expand to higher num_eqns, ny, nz
-      !TODO account for odd grids
-      DO inx=1,nx_c
-        inx_f=inx*2
-        mybb(inx)=myrr(inx_f-1)
-        IF(inx > 1) mybb(inx)=mybb(inx)+0.5*myrr(inx_f-2)
-        IF(inx < nx_c) mybb(inx)=mybb(inx)+0.5*myrr(inx_f)
-      ENDDO
-
-      CALL VecRestoreArrayF90(rr,myrr,iperr)
-      CALL VecRestoreArrayF90(bb,mybb,iperr)
-
-      !TODO
-
-    ENDSUBROUTINE
-#endif
 
 ENDMODULE LinearSolverTypes_Multigrid
