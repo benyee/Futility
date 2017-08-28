@@ -254,12 +254,12 @@ MODULE LinearSolverTypes_Multigrid
       CLASS(MatrixType),POINTER :: interpmat => NULL()
       TYPE(ParamType) :: matPList
 #ifdef FUTILITY_HAVE_PETSC
-      INTEGER(SIK),ALLOCATABLE :: dnnz(:),onnz(:) !ZZZZ
+      INTEGER(SIK),ALLOCATABLE :: dnnz(:),onnz(:),tmpint_arr(:) !ZZZZ
 
-      KSP :: ksp_temp
-      PC :: pc_temp
-      PetscErrorCode  :: iperr
-      Mat :: mat_temp
+      KSP :: ksp_temp;
+      PC :: pc_temp;
+      PetscErrorCode  :: iperr;
+      Mat :: mat_temp;
 #endif
 
       IF(solver%isMultigridSetup) &
@@ -326,7 +326,14 @@ MODULE LinearSolverTypes_Multigrid
           CALL KSPSetType(ksp_temp,KSPRICHARDSON,iperr)
           CALL KSPGetPC(ksp_temp,pc_temp,iperr)
           !TODO use PCBJACOBI and set block size
-          CALL PCSetType(pc_temp,PCJACOBI,iperr)
+          CALL PCSetType(pc_temp,PCBJACOBI,iperr)
+          ALLOCATE(tmpint_arr(nx*ny*nz))
+          tmpint_arr=1_SIK
+          CALL PCBJacobiSetTotalBlocks(pc_temp,nx*ny*nz,tmpint_arr,iperr)
+          DEALLOCATE(tmpint_arr)
+          CALL PetscOptionsSetValue(PETSC_NULL_OBJECT,"-sub_ksp_type","ksprichardson",iperr)
+          CALL PetscOptionsSetValue(PETSC_NULL_OBJECT,"-sub_pc_type","pcsor",iperr)
+          CALL PCSetFromOptions(pc_temp,iperr)
 
           !Create the interpolation operator:
           nx_old=nx
