@@ -184,28 +184,6 @@ CONTAINS
          .AND. thisLS%MPIparallelEnv%isInit() &
          .AND. thisLS%OMPparallelEnv%isInit() )
       ASSERT(bool, 'Iterative%init(...)')
-        ! Check uninitialized A
-      CALL thisLS%A%clear()
-      nerrors1=e%getCounter(EXCEPTION_ERROR)
-      CALL thisLS%setupPC()
-      nerrors2=e%getCounter(EXCEPTION_ERROR)
-      ASSERT(nerrors2 == nerrors1+1,'LS%setupPC PC%A%isInit check')
-      FINFO() 'Result:',nerrors2,'Solution:',nerrors1+1
-      ! Check deallocated A
-      DEALLOCATE(thisLS%A)
-      nerrors1=e%getCounter(EXCEPTION_ERROR)
-      CALL thisLS%setupPC()
-      nerrors2=e%getCounter(EXCEPTION_ERROR)
-      ASSERT(nerrors2 == nerrors1+1,'LS%setupPC ALLOCATED(PC%A) check')
-      FINFO() 'Result:',nerrors2,'Solution:',nerrors1+1
-      ! Check uninitialized linear solver
-      CALL thisLS%clear()
-      nerrors1=e%getCounter(EXCEPTION_ERROR)
-      CALL thisLS%setupPC()
-      nerrors2=e%getCounter(EXCEPTION_ERROR)
-      ASSERT(nerrors2 == nerrors1+1,'LS%setupPC ALLOCATED(PC%A) check')
-      FINFO() 'Result:',nerrors2,'Solution:',nerrors1+1
-!      ENDIF
 
       ref_level_info = RESHAPE((/1,9,1,1, &
                                  1,17,1,1, &
