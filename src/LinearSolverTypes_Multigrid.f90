@@ -90,6 +90,9 @@ MODULE LinearSolverTypes_Multigrid
       !> @copybrief TODO
       !> @copydetails TODO
       PROCEDURE,PASS :: setupPETScMG => setupPETScMG_LinearSolverType_Multigrid
+      !> @copybrief TODO
+      !> @copydetails TODO
+      PROCEDURE,PASS :: clear => clear_LinearSolverType_Multigrid
   ENDTYPE LinearSolverType_Multigrid
 
   !> Logical flag to check whether the required and optional parameter lists
