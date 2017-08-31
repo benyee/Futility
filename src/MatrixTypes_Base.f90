@@ -35,7 +35,7 @@ MODULE MatrixTypes_Base
   
   PUBLIC :: MatrixType_Paramsflag
   !> set enumeration scheme for matrix types
-  INTEGER(SIK),PARAMETER,PUBLIC :: SPARSE=0,TRIDIAG=1,DENSESQUARE=2,DENSERECT=3
+  INTEGER(SIK),PARAMETER,PUBLIC :: SPARSE=0,TRIDIAG=1,DENSESQUARE=2,DENSERECT=3,BLOCKSPARSE=4
   PUBLIC :: SparseMatrixType_reqParams,SparseMatrixType_optParams
   PUBLIC :: TriDiagMatrixType_reqParams,TriDiagMatrixType_optParams
   PUBLIC :: DenseRectMatrixType_reqParams,DenseRectMatrixType_optParams

@@ -326,6 +326,7 @@ MODULE LinearSolverTypes_Multigrid
 
         CALL matPList%clear()
         CALL matPList%add('MatrixType->matType',SPARSE)
+        CALL matPList%add('MatrixType->blockSize',num_eqns)
         CALL matPList%add('MatrixType->engine',VM_PETSC)
         CALL matPList%add('MatrixType->MPI_Comm_ID',solver%MPIparallelEnv%comm)
         CALL matPList%add('MatrixType->isSym',.FALSE.)

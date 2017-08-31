@@ -110,7 +110,7 @@ MODULE MatrixTypes
   PUBLIC :: RectMatrixType
   PUBLIC :: DistributedMatrixType
   ! Matrix structure enumerations
-  PUBLIC :: SPARSE,DENSESQUARE,DENSERECT,TRIDIAG
+  PUBLIC :: SPARSE,DENSESQUARE,DENSERECT,TRIDIAG,BLOCKSPARSE
   ! Matrix-Vector engine enumerations
   PUBLIC :: VM_PETSC,VM_TRILINOS,VM_NATIVE
   ! Parameter list setup/teardown
@@ -304,7 +304,7 @@ MODULE MatrixTypes
 #endif
         CASE(VM_PETSC)
 #ifdef FUTILITY_HAVE_PETSC
-          IF(matType == SPARSE .OR. matType == DENSESQUARE) THEN
+          IF(matType == SPARSE .OR. matType == DENSESQUARE .OR. matType == BLOCKSPARSE) THEN
             ALLOCATE(PETScMatrixType :: matrix)
           ELSE
             CALL eMatrixType%raiseError(modName//"::"//myName//" - "// &

@@ -92,9 +92,12 @@ MODULE MatrixTypes_PETSc
       CLASS(PETScMatrixType),INTENT(INOUT) :: matrix
       CLASS(ParamType),INTENT(IN) :: Params
       TYPE(ParamType) :: validParams
-      INTEGER(SIK) :: n, matType, MPI_COMM_ID, nlocal
+      INTEGER(SIK) :: n, matType, MPI_COMM_ID, nlocal,blockSize
       !Number of columns (global and local)
       INTEGER(SIK) :: m, mlocal
+      !Number of local and nonlocal nonzeros in each row:
+      !For BLOCKSPASRSE matType, these are the number of local and nonlocal
+      !  blocks in each block row.
       INTEGER(SIK),ALLOCATABLE :: dnnz(:), onnz(:)
       LOGICAL(SBK) :: isSym
 
@@ -112,6 +115,8 @@ MODULE MatrixTypes_PETSc
       CALL validParams%get('MatrixType->matType',matType)
       CALL validParams%get('MatrixType->MPI_COMM_ID',MPI_COMM_ID)
       CALL validParams%get('MatrixType->nlocal',nlocal)
+      IF(matType == BLOCKSPARSE) &
+        CALL validParams%get('MatrixType->blockSize',blockSize)
 
       m=n
       mlocal=nlocal
@@ -157,6 +162,8 @@ MODULE MatrixTypes_PETSc
 
           IF (matType == SPARSE) THEN
             CALL MatSetType(matrix%a,MATMPIAIJ,ierr)
+          ELSEIF (matType == BLOCKSPARSE) THEN
+            CALL MatSetType(matrix%a,MATMPIBAIJ,ierr)
           ELSEIF (matType == DENSESQUARE) THEN
             CALL MatSetType(matrix%a,MATMPIDENSE,ierr)
           ELSE
@@ -166,7 +173,11 @@ MODULE MatrixTypes_PETSc
           ENDIF
 
           IF(MINVAL(dnnz) > 0_SIK .AND. MINVAL(onnz) >= 0_SIK) THEN
-            CALL MatMPIAIJSetPreallocation(matrix%A,0,dnnz,0,onnz,ierr)
+            IF(matType == BLOCKSPARSE) THEN
+              CALL MatMPIBAIJSetPreallocation(matrix%A,blockSize,0,dnnz,0,onnz,ierr)
+            ELSE
+              CALL MatMPIAIJSetPreallocation(matrix%A,0,dnnz,0,onnz,ierr)
+            ENDIF
           ELSE
             CALL MatSetUp(matrix%a,ierr)
           ENDIF
