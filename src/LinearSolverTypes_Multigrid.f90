@@ -39,18 +39,10 @@
 !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++!
 MODULE LinearSolverTypes_Multigrid
   USE IntrType
-  USE BLAS
-  USE trilinos_interfaces
-  USE Times
   USE ExceptionHandler
-  USE Allocs
   USE ParameterLists
-  USE ParallelEnv
   USE VectorTypes
   USE MatrixTypes
-  USE PreconditionerTypes
-  USE Strings
-  USE IOUtil
   USE LinearSolverTypes
   IMPLICIT NONE
 
