@@ -537,6 +537,9 @@ MODULE LinearSolverTypes_Multigrid
       !  call is mostly to set a limit on the number of MG V-cycles performed.
       CALL KSPSetTolerances(solver%ksp,1.E-8_SRK,1.E-8_SRK,1.E3_SRK,10_SIK,iperr)
 
+      !Set cycle type to W:
+      CALL PCMGSetCycleType(solver%pc,PC_MG_CYCLE_W,iperr)
+
       solver%isMultigridSetup=.TRUE.
 #else
       CALL eLinearSolverType%raiseError('Incorrect call to '// &
