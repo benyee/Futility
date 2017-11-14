@@ -772,7 +772,7 @@ MODULE SmootherTypes
             IF(manager%hasAllColorsDefined .AND. smoother%isKSPSetup) THEN
               !TODO allow for multiple RB iterations from param list.
               CALL KSPSetTolerances(smoother%ksp,0.0_SRK,0.0_SRK,1E8_SRK, &
-                                    smoother%colorManager%num_colors,iperr)
+                                 smoother%colorManager%num_colors,iperr)
             ENDIF
 #endif
 
