@@ -523,11 +523,13 @@ MODULE LinearSolverTypes_Multigrid
       ELSE
         !Some reasonable number of GMRES iterations:
         num_mg_coarse_its=CEILING(SQRT(PRODUCT(solver%level_info(:,1))+0._SRK))
+        WRITE(*,*) "level_info = ", solver%level_info
+        WRITE(*,*) "num_mg_coarse_its = ", num_mg_coarse_its
       ENDIF
       !None of the tolerances actually matter since PCMG doesn't check for
       !  convergence and just runs until the maximum number of iterations.
       CALL PCMGGetSmoother(solver%pc,0,ksp_temp,iperr)
-      CALL KSPSetTolerances(ksp_temp,1.E-8_SRK,1.E-8_SRK,1.E3_SRK, &
+      CALL KSPSetTolerances(ksp_temp,1.E-10_SRK,1.E-10_SRK,1.E3_SRK, &
                               num_mg_coarse_its,iperr)
       CALL KSPGMRESSetRestart(ksp_temp,num_mg_coarse_its,iperr)
       !Redundant call, but I think for some reason it might be needed:
@@ -535,7 +537,7 @@ MODULE LinearSolverTypes_Multigrid
 
       !Not sure if the tolerance actually matters on the outer level.  This
       !  call is mostly to set a limit on the number of MG V-cycles performed.
-      CALL KSPSetTolerances(solver%ksp,1.E-8_SRK,1.E-8_SRK,1.E3_SRK,10_SIK,iperr)
+      CALL KSPSetTolerances(solver%ksp,1.E-10_SRK,1.E-10_SRK,1.E3_SRK,10_SIK,iperr)
 
       !Set cycle type to W:
       CALL PCMGSetCycleType(solver%pc,PC_MG_CYCLE_W,iperr)
