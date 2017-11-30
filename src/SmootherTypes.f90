@@ -61,8 +61,10 @@ MODULE SmootherTypes
   PUBLIC :: smootherList
   PUBLIC :: ctxList
   PUBLIC :: smootherType_PETSc_CBJ
+#ifdef FUTILITY_HAVE_PETSC
   PUBLIC :: PCSetUp_CBJ
   PUBLIC :: PCApply_CBJ
+#endif
 #endif
 
   !> TPL types from LinearSolverTypes:
@@ -282,6 +284,7 @@ MODULE SmootherTypes
       PetscErrorCode :: iperr
     ENDSUBROUTINE VecRestoreArrayF90
   ENDINTERFACE
+#endif
 
   !> Explicitly defines the interface for the clear routines
   ABSTRACT INTERFACE
@@ -299,7 +302,6 @@ MODULE SmootherTypes
       TYPE(ParamType),INTENT(IN) :: params
     ENDSUBROUTINE smootherInit_sub_absintfc
   ENDINTERFACE
-#endif
 
   !> Abstract smoother instance:
   !>  This is needed so smootherList can have different smoother types
