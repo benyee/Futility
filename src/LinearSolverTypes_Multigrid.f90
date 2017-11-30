@@ -526,8 +526,8 @@ MODULE LinearSolverTypes_Multigrid
         WRITE(*,*) "level_info = ", solver%level_info
         WRITE(*,*) "num_mg_coarse_its = ", num_mg_coarse_its
       ENDIF
-      !None of the tolerances actually matter since PCMG doesn't check for
-      !  convergence and just runs until the maximum number of iterations.
+      !None of the tolerances actually matter since PCMG doesn't check smoothers
+      !  for convergence.  It just runs until the maximum number of iterations.
       CALL PCMGGetSmoother(solver%pc,0,ksp_temp,iperr)
       CALL KSPSetTolerances(ksp_temp,1.E-10_SRK,1.E-10_SRK,1.E3_SRK, &
                               num_mg_coarse_its,iperr)
@@ -539,8 +539,8 @@ MODULE LinearSolverTypes_Multigrid
       !  call is mostly to set a limit on the number of MG V-cycles performed.
       CALL KSPSetTolerances(solver%ksp,1.E-10_SRK,1.E-10_SRK,1.E3_SRK,10_SIK,iperr)
 
-      !Set cycle type to W:
-      CALL PCMGSetCycleType(solver%pc,PC_MG_CYCLE_W,iperr)
+      !Set cycle type to V:
+      CALL PCMGSetCycleType(solver%pc,PC_MG_CYCLE_V,iperr)
 
       solver%isMultigridSetup=.TRUE.
 #else
