@@ -414,7 +414,8 @@ MODULE LinearSolverTypes_Multigrid
       TYPE(MultigridMeshStructureType),INTENT(IN) :: myMMeshes
       LOGICAL(SBK),OPTIONAL :: preallocated
 
-      INTEGER(SIK) :: iLevel,ip,i,row,col,ieqn,indices(48),nindices
+      !Need to increase size of indices to 48 if 3-D is allowed:
+      INTEGER(SIK) :: iLevel,ip,i,row,col,ieqn,indices(8),nindices
       REAL(SRK),ALLOCATABLE :: wts(:,:)
 
 #ifdef FUTILITY_HAVE_PETSC
@@ -435,7 +436,7 @@ MODULE LinearSolverTypes_Multigrid
           !Note that if there is interpolation across processors, this does not
           !  work
         ENDIF
-        ALLOCATE(wts(myMMeshes%meshes(iLevel)%num_eqns,48))
+        ALLOCATE(wts(myMMeshes%meshes(iLevel)%num_eqns,8))
         !Create the interpolation operator:
         DO ip=myMMeshes%meshes(iLevel)%istt,myMMeshes%meshes(iLevel)%istp
           CALL getFinalWtsAndIndices(myMMeshes%meshes(iLevel), &
@@ -472,7 +473,6 @@ MODULE LinearSolverTypes_Multigrid
       INTEGER(SIK) :: num_mg_coarse_its
 #ifdef FUTILITY_HAVE_PETSC
       KSP :: ksp_temp
-      PC :: pc_temp
       PetscErrorCode  :: iperr
 
       IF(solver%TPLType /= PETSC) &
@@ -533,7 +533,7 @@ MODULE LinearSolverTypes_Multigrid
                               num_mg_coarse_its,iperr)
       CALL KSPGMRESSetRestart(ksp_temp,num_mg_coarse_its,iperr)
       !Redundant call, but I think for some reason it might be needed:
-      CALL KSPSetInitialGuessNonzero(ksp_temp,PETSC_TRUE,iperr)
+      CALL KSPSetInitialGuessNonzero(ksp_temp,PETSC_FALSE,iperr)
 
       !Not sure if the tolerance actually matters on the outer level.  This
       !  call is mostly to set a limit on the number of MG V-cycles performed.
@@ -694,9 +694,9 @@ MODULE LinearSolverTypes_Multigrid
       REAL(SRK),INTENT(INOUT) :: wts(:,:)
       INTEGER(SIK),INTENT(OUT) :: nindices
 
-      INTEGER(SIK) :: ichild,ichild2,ichild3,ipn,ipn2,ipn3,i,ind
-      REAL(SRK) :: wt2(num_eqns),tmpwts(num_eqns,48)
-      INTEGER(SIK) :: tmpindices(48),counter
+      INTEGER(SIK) :: i,ind
+      REAL(SRK) :: wt2(num_eqns),tmpwts(num_eqns,8)
+      INTEGER(SIK) :: tmpindices(8),counter
 
       counter=1
       wt2=1.0_SRK
