@@ -514,10 +514,11 @@ MODULE LinearSolverTypes_Multigrid
         CALL PCMGSetInterpolation(solver%pc,iLevel,solver%interpMats_PETSc(iLevel)%a,iperr)
       ENDDO
 
-      !Coarsest smoother is GMRES with block Jacobi preconditioner:
       iLevel=0
       CALL solver%setSmoother(smootherMethod_list(iLevel+1),iLevel)
-      IF(Params%has('LinearSolverType->num_mg_coarse_its')) THEN
+      IF(smootherMethod_list(iLevel+1) == LU) THEN
+        num_mg_coarse_its=1
+      ELSE IF(Params%has('LinearSolverType->num_mg_coarse_its')) THEN
         CALL Params%get('LinearSolverType->num_mg_coarse_its', &
                 num_mg_coarse_its)
       ELSE
@@ -608,10 +609,25 @@ MODULE LinearSolverTypes_Multigrid
           CALL KSPGetPC(ksp_temp,pc_temp,iperr)
           CALL PCSetType(pc_temp,PCSOR,iperr)
         ELSEIF(smoother == GMRES) THEN
-          !Coarsest smoother is GMRES with block Jacobi preconditioner:
           CALL KSPSetType(ksp_temp,KSPGMRES,iperr)
           CALL KSPGetPC(ksp_temp,pc_temp,iperr)
           CALL PCSetType(pc_temp,PCBJACOBI,iperr)
+        ELSEIF(smoother == LU) THEN
+        !We might want to loosen this to allow SUPERLU_MT (superLU for shared
+        !  memory architectures)
+#ifndef PETSC_HAVE_SUPERLU_DIST
+          IF(solver%MPIparallelEnv%nproc > 1) &
+            CALL eLinearSolverType%raiseError(modName//"::"//myName//" - "// &
+              "Cannot use LU in parallel in PETSc without SUPERLU_DIST!")
+#endif
+          !Only for the coarsest level!
+          IF(istt > 0) &
+            CALL eLinearSolverType%raiseError(modName//"::"//myName//" - "// &
+              "LU should only be used on the coarsest level!")
+          CALL KSPSetType(ksp_temp,KSPPREONLY,iperr)
+          CALL KSPGetPC(ksp_temp,pc_temp,iperr)
+          CALL PCSetType(pc_temp,PCLU,iperr)
+          CALL PCFactorSetMatSolverPackage(pc_temp,MATSOLVERSUPERLU_DIST,iperr)
         ELSEIF(smoother == BJACOBI) THEN
           CALL KSPSetType(ksp_temp,KSPRICHARDSON,iperr)
           CALL KSPGetPC(ksp_temp,pc_temp,iperr)
