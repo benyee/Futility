@@ -543,6 +543,9 @@ MODULE LinearSolverTypes_Multigrid
       !Set cycle type to V:
       CALL PCMGSetCycleType(solver%pc,PC_MG_CYCLE_V,iperr)
 
+      CALL PetscOptionsSetValue("-pc_mg_log",PETSC_NULL_CHARACTER,iperr)
+      CALL PCSetFromOptions(solver%pc,iperr)
+
       solver%isMultigridSetup=.TRUE.
 #else
       CALL eLinearSolverType%raiseError('Incorrect call to '// &
