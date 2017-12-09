@@ -470,7 +470,9 @@ MODULE LinearSolverTypes_Multigrid
       TYPE(ParamType),INTENT(IN) :: Params
       INTEGER(SIK) :: iLevel
       INTEGER(SIK),ALLOCATABLE :: smootherMethod_list(:)
-      INTEGER(SIK) :: num_mg_coarse_its
+      INTEGER(SIK) :: cg_solver_its,num_smooth
+      REAL(SRK) :: cg_tol
+      LOGICAL(SBK) :: precond_flag,log_flag
 #ifdef FUTILITY_HAVE_PETSC
       KSP :: ksp_temp
       PetscErrorCode  :: iperr
@@ -484,8 +486,8 @@ MODULE LinearSolverTypes_Multigrid
                  'Multigrid linear system is already setup!')
 
       ALLOCATE(smootherMethod_list(solver%nLevels))
-      IF(Params%has('LinearSolverType->smootherMethod_list')) THEN
-        CALL Params%get('LinearSolverType->smootherMethod_list', &
+      IF(Params%has('LinearSolverType->Multigrid->smootherMethod_list')) THEN
+        CALL Params%get('LinearSolverType->Multigrid->smootherMethod_list', &
                 smootherMethod_list)
       ELSE
         smootherMethod_list(1)=GMRES
@@ -493,7 +495,16 @@ MODULE LinearSolverTypes_Multigrid
       ENDIF
 
       !KSPRICHARDSON+PCMG = Multigrid linear solver, not multigrid precon.
-      CALL KSPSetType(solver%ksp,KSPRICHARDSON,iperr)
+      precond_flag=.FALSE.
+      IF(Params%has('LinearSolverType->Multigrid->precond_flag')) THEN
+        CALL Params%get('LinearSolverType->Multigrid->precond_flag', &
+                        precond_flag)
+      ENDIF
+      IF(precond_flag) THEN
+        CALL KSPSetType(solver%ksp,KSPGMRES,iperr)
+      ELSE
+        CALL KSPSetType(solver%ksp,KSPRICHARDSON,iperr)
+      ENDIF
       CALL KSPGetPC(solver%ksp,solver%pc,iperr)
       CALL PCSetType(solver%pc,PCMG,iperr)
 
@@ -514,37 +525,51 @@ MODULE LinearSolverTypes_Multigrid
         CALL PCMGSetInterpolation(solver%pc,iLevel,solver%interpMats_PETSc(iLevel)%a,iperr)
       ENDDO
 
+      IF(Params%has('LinearSolverType->Multigrid->num_smooth')) THEN
+        CALL Params%get('LinearSolverType->Multigrid->num_smooth',num_smooth)
+        !TODO For CBJ do we have to multiply this by the number of colors?
+        CALL PCMGSetNumberSmoothDown(solver%pc,num_smooth,iperr)
+        CALL PCMGSetNumberSmoothUp(solver%pc,num_smooth,iperr)
+      ENDIF
+
       iLevel=0
       CALL solver%setSmoother(smootherMethod_list(iLevel+1),iLevel)
       IF(smootherMethod_list(iLevel+1) == LU) THEN
-        num_mg_coarse_its=1
-      ELSE IF(Params%has('LinearSolverType->num_mg_coarse_its')) THEN
-        CALL Params%get('LinearSolverType->num_mg_coarse_its', &
-                num_mg_coarse_its)
+        cg_solver_its=1
+      ELSE IF(Params%has('LinearSolverType->Multigrid->cg_solver_its')) THEN
+        CALL Params%get('LinearSolverType->Multigrid->cg_solver_its', &
+                cg_solver_its)
+        cg_solver_its=MIN(cg_solver_its,PRODUCT(solver%level_info(:,1)))
       ELSE
         !Some reasonable number of GMRES iterations:
-        num_mg_coarse_its=CEILING(SQRT(PRODUCT(solver%level_info(:,1))+0._SRK))
-        WRITE(*,*) "level_info = ", solver%level_info
-        WRITE(*,*) "num_mg_coarse_its = ", num_mg_coarse_its
+        cg_solver_its=CEILING(SQRT(PRODUCT(solver%level_info(:,1))+0._SRK))
       ENDIF
-      !None of the tolerances actually matter since PCMG doesn't check smoothers
-      !  for convergence.  It just runs until the maximum number of iterations.
       CALL PCMGGetSmoother(solver%pc,0,ksp_temp,iperr)
-      CALL KSPSetTolerances(ksp_temp,1.E-10_SRK,1.E-10_SRK,1.E3_SRK, &
-                              num_mg_coarse_its,iperr)
-      CALL KSPGMRESSetRestart(ksp_temp,num_mg_coarse_its,iperr)
+      cg_tol=1.E-10_SRK
+      IF(Params%has('LinearSolverType->Multigrid->cg_tol')) THEN
+        CALL Params%get('LinearSolverType->Multigrid->cg_tol',cg_tol)
+        IF(cg_tol > 0.0_SRK) &
+          CALL KSPSetNormType(ksp_temp,KSP_NORM_PRECONDITIONED,iperr)
+      ELSE
+      ENDIF
+      CALL KSPSetTolerances(ksp_temp,cg_tol,cg_tol,1.E3_SRK,cg_solver_its,iperr)
+      CALL KSPGMRESSetRestart(ksp_temp,cg_solver_its,iperr)
       !Redundant call, but I think for some reason it might be needed:
       CALL KSPSetInitialGuessNonzero(ksp_temp,PETSC_FALSE,iperr)
 
-      !Not sure if the tolerance actually matters on the outer level.  This
-      !  call is mostly to set a limit on the number of MG V-cycles performed.
+      !Default multigrid tolerance:
       CALL KSPSetTolerances(solver%ksp,1.E-10_SRK,1.E-10_SRK,1.E3_SRK,10_SIK,iperr)
 
       !Set cycle type to V:
       CALL PCMGSetCycleType(solver%pc,PC_MG_CYCLE_V,iperr)
 
-      CALL PetscOptionsSetValue("-pc_mg_log",PETSC_NULL_CHARACTER,iperr)
-      CALL PCSetFromOptions(solver%pc,iperr)
+      IF(Params%has('LinearSolverType->Multigrid->log_flag')) THEN
+        CALL Params%get('LinearSolverType->Multigrid->log_flag',log_flag)
+        IF(log_flag) THEN
+          CALL PetscOptionsSetValue("-pc_mg_log",PETSC_NULL_CHARACTER,iperr)
+          CALL PCSetFromOptions(solver%pc,iperr)
+        ENDIF
+      ENDIF
 
       solver%isMultigridSetup=.TRUE.
 #else
