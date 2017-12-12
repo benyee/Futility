@@ -588,8 +588,6 @@ MODULE LinearSolverTypes_Multigrid
       ENDIF
       CALL KSPSetTolerances(ksp_temp,cg_tol,cg_tol,1.E3_SRK,cg_solver_its,iperr)
       CALL KSPGMRESSetRestart(ksp_temp,cg_solver_its,iperr)
-      !Redundant call, but I think for some reason it might be needed:
-      CALL KSPSetInitialGuessNonzero(ksp_temp,PETSC_FALSE,iperr)
 
       !Default multigrid tolerance:
       CALL KSPSetTolerances(solver%ksp,1.E-10_SRK,1.E-10_SRK,1.E3_SRK, &
@@ -706,7 +704,13 @@ MODULE LinearSolverTypes_Multigrid
             "Unrecognized smoother option!")
         ENDIF
 
-        CALL KSPSetInitialGuessNonzero(ksp_temp,PETSC_TRUE,iperr)
+        !On all levels except the finest, the initial guess should be zero
+        !  since it is an error equation.
+        IF(i == solver%nLevels-1) THEN
+          CALL KSPSetInitialGuessNonzero(ksp_temp,PETSC_TRUE,iperr)
+        ELSE
+          CALL KSPSetInitialGuessNonzero(ksp_temp,PETSC_FALSE,iperr)
+        ENDIF
       ENDDO
 #endif
 
