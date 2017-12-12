@@ -44,11 +44,13 @@ MODULE SmootherTypes
 #endif
 
   PRIVATE
+
+  INTEGER(SIK),PARAMETER,PUBLIC :: MAX_SMOOTHERS_PER_LIST=8_SIK
 !
 ! List of public members
   PUBLIC :: eSmootherType
-  PUBLIC :: isSmootherListInit
-  PUBLIC :: num_smoothers
+  PUBLIC :: num_smoother_lists
+  PUBLIC :: smootherListCollection
   !Public smoother list manager functions:
   PUBLIC :: smootherManager_clear
   PUBLIC :: smootherManager_setKSP
@@ -58,9 +60,7 @@ MODULE SmootherTypes
   PUBLIC :: smootherManager_defineAllColors
   PUBLIC :: smootherManager_requestAllBlocksUpdate
 #ifdef UNIT_TEST
-  PUBLIC :: smootherList
-  PUBLIC :: ctxList
-  PUBLIC :: smootherType_PETSc_CBJ
+  PUBLIC :: SmootherType_PETSc_CBJ
 #ifdef FUTILITY_HAVE_PETSC
   PUBLIC :: PCSetUp_CBJ
   PUBLIC :: PCApply_CBJ
@@ -315,17 +315,26 @@ MODULE SmootherTypes
 #else
     INTEGER(SIK) :: ctx(1)
 #endif
-  ENDTYPE
+  ENDTYPE ctxInstanceType
 
-  !> Whether or not the smoother list has been initialized:
-  !>   There is only one copy of the smoother list.
-  LOGICAL(SBK),SAVE :: isSmootherListInit=.FALSE.
-  !> Number of smoothers in the smoother list
-  INTEGER(SIK),SAVE :: num_smoothers=0_SIK
-  !> List of abstract smoothers:
-  TYPE(SmootherInstanceType),ALLOCATABLE,SAVE :: smootherList(:)
-  !> ctxList to keep track of which smoother is which
-  TYPE(ctxInstanceType),ALLOCATABLE,SAVE :: ctxList(:)
+  !> List of smoothers.
+  !>  This is needed so we can have multiple lists of smoothers.
+  TYPE :: SmootherListType
+    !> Whether or not the smoother list has been initialized:
+    !>   There is only one copy of the smoother list.
+    LOGICAL(SBK) :: isSmootherListInit=.FALSE.
+    !> Number of smoothers in the smoother list
+    INTEGER(SIK) :: num_smoothers=0_SIK
+    !> List of abstract smoothers:
+    TYPE(SmootherInstanceType),ALLOCATABLE :: smootherList(:)
+    !> ctxList to keep track of which smoother is which
+    TYPE(ctxInstanceType),ALLOCATABLE :: ctxList(:)
+  ENDTYPE SmootherListType
+
+  !Number of smoother lists:
+  INTEGER(SIK),SAVE :: num_smoother_lists=0_SIK
+  !Collection of smootherList objects
+  TYPE(SmootherListType),ALLOCATABLE,SAVE :: smootherListCollection(:)
 
   !> Name of module
   CHARACTER(LEN=*),PARAMETER :: modName='SMOOTHERTYPES'
@@ -464,25 +473,34 @@ MODULE SmootherTypes
     ENDSUBROUTINE clear_ColorManagerType
 !
 !-------------------------------------------------------------------------------
-!> @brief Clears the smootherList
+!> @brief Clears all the smoother lists
 !>
     SUBROUTINE smootherManager_clear
       CHARACTER(LEN=*),PARAMETER :: myName='smootherManager_clear'
 
-      INTEGER(SIK) :: ismoother
+      INTEGER(SIK) :: ismoother,iList
 
-      IF(ALLOCATED(smootherList)) THEN
-        DO ismoother=1,num_smoothers
-          IF(ALLOCATED(smootherList(ismoother)%smoother)) THEN
-            CALL smootherList(ismoother)%smoother%clear()
-            DEALLOCATE(smootherList(ismoother)%smoother)
-          ENDIF
-        ENDDO
-        DEALLOCATE(smootherList)
-      ENDIF
-      IF(ALLOCATED(ctxList)) DEALLOCATE(ctxList)
-      isSmootherListInit=.FALSE.
-      num_smoothers=0_SIK
+      DO iList=1,num_smoother_lists
+        IF(ALLOCATED(smootherListCollection(iList)%smootherList)) THEN
+          DO ismoother=1,smootherListCollection(iList)%num_smoothers
+            IF(ALLOCATED(smootherListCollection(iList)% &
+                smootherList(ismoother)%smoother)) THEN
+              CALL smootherListCollection(iList)%smootherList(ismoother)% &
+                  smoother%clear()
+              DEALLOCATE(smootherListCollection(iList)% &
+                  smootherList(ismoother)%smoother)
+            ENDIF
+          ENDDO
+          DEALLOCATE(smootherListCollection(iList)%smootherList)
+        ENDIF
+        IF(ALLOCATED(smootherListCollection(iList)%ctxList)) &
+          DEALLOCATE(smootherListCollection(iList)%ctxList)
+        smootherListCollection(iList)%isSmootherListInit=.FALSE.
+        smootherListCollection(iList)%num_smoothers=0
+      ENDDO
+
+      IF(ALLOCATED(smootherListCollection)) DEALLOCATE(smootherListCollection)
+      num_smoother_lists=0
 
     ENDSUBROUTINE smootherManager_clear
 !
@@ -490,11 +508,12 @@ MODULE SmootherTypes
 !> @brief Sets the ksp object for a given smoother
 !>
 !> @param ismoother Index of the smoother in the smootherList
+!> @param iList Index of the smootherList in smootherListCollection
 !> @param ksp Ksp object
 !>
-    SUBROUTINE smootherManager_setKSP(ismoother,ksp)
+    SUBROUTINE smootherManager_setKSP(ismoother,iList,ksp)
       CHARACTER(LEN=*),PARAMETER :: myName='smootherManager_setKSP'
-      INTEGER(SIK),INTENT(IN) :: ismoother
+      INTEGER(SIK),INTENT(IN) :: ismoother,iList
       CHARACTER(LEN=11) :: pcname
       CHARACTER(LEN=5) :: pcnumber
 #ifdef FUTILITY_HAVE_PETSC
@@ -505,15 +524,17 @@ MODULE SmootherTypes
       CALL eSmootherType%raiseError(modName//"::"//myName//" - "// &
           "This subroutine is only for PETSc smoothers!")
 #endif
-      IF(.NOT. isSmootherListInit) &
+      IF(.NOT. smootherListCollection(iList)%isSmootherListInit) &
         CALL eSmootherType%raiseError(modName//"::"//myName//" - "// &
             "Smoother list has not been initialized!")
 
-      IF(ismoother < 1_SIK .OR. ismoother > num_smoothers) &
+      IF(ismoother < 1_SIK .OR. &
+          ismoother > smootherListCollection(iList)%num_smoothers) &
         CALL eSmootherType%raiseError(modName//"::"//myName//" - "// &
             "Invalid smoother ID!")
 
-      SELECTTYPE(smoother => smootherList(ismoother)%smoother)
+      SELECTTYPE(smoother => smootherListCollection(iList)% &
+          smootherList(ismoother)%smoother)
         TYPE IS(SmootherType_PETSc_CBJ)
           smoother%ksp=ksp
 #ifdef FUTILITY_HAVE_PETSC
@@ -524,8 +545,10 @@ MODULE SmootherTypes
           pcname="CBJ PC"//pcnumber
           CALL PCShellSetName(smoother%pc,pcname,iperr)
           CALL PCShellSetSetUp(smoother%pc,PCSetUp_CBJ,iperr)
-          CALL PCShellSetContext(smoother%pc,ctxList(ismoother)%ctx,iperr)
+          CALL PCShellSetContext(smoother%pc, &
+                  smootherListCollection(iList)%ctxList(ismoother)%ctx,iperr)
           CALL PCShellSetApply(smoother%pc,PCApply_CBJ,iperr)
+          !ZZZZ move this to LS_MG or add num_inners here
           IF(smoother%colorManager%hasAllColorsDefined) THEN
             CALL KSPSetTolerances(smoother%ksp,0.0_SRK,0.0_SRK,1E8_SRK, &
                                   smoother%colorManager%num_colors,iperr)
@@ -547,13 +570,16 @@ MODULE SmootherTypes
 !> @brief Initializes the smootherList
 !>
 !> @param params Parameter list with details for each smoother
+!> @param iList Index for the list this subroutine is initializing
 !>
-    SUBROUTINE smootherManager_init(params)
+    SUBROUTINE smootherManager_init(params,iList)
       CHARACTER(LEN=*),PARAMETER :: myName='smootherManager_init'
       TYPE(ParamType),INTENT(IN) :: params
+      INTEGER(SIK),INTENT(IN) :: iList
 
       LOGICAL(SBK) :: tmpbool
       INTEGER(SIK) :: ismoother
+      INTEGER(SIK) :: num_smoothers
 
       INTEGER(SIK),ALLOCATABLE :: istt_list(:),istp_list(:)
       INTEGER(SIK),ALLOCATABLE :: blk_size_list(:),num_colors_list(:)
@@ -574,6 +600,7 @@ MODULE SmootherTypes
 
       !Extract param list info:
       CALL params%get('SmootherType->num_smoothers',num_smoothers)
+      smootherListCollection(iList)%num_smoothers=num_smoothers
       ALLOCATE(istt_list(num_smoothers))
       ALLOCATE(istp_list(num_smoothers))
       ALLOCATE(blk_size_list(num_smoothers))
@@ -597,10 +624,11 @@ MODULE SmootherTypes
       ENDIF
       CALL params%get('SmootherType->MPI_Comm_ID_list',MPI_Comm_ID_list)
 
-      ALLOCATE(smootherList(num_smoothers))
-      ALLOCATE(ctxList(num_smoothers))
+      ALLOCATE(smootherListCollection(iList)%smootherList(num_smoothers))
+      ALLOCATE(smootherListCollection(iList)%ctxList(num_smoothers))
       DO ismoother=1,num_smoothers
-        ctxList(ismoother)%ctx(1)=ismoother
+        smootherListCollection(iList)%ctxList(ismoother)%ctx(1)= &
+            iList*MAX_SMOOTHERS_PER_LIST+ismoother
         CALL params_out%clear()
         CALL params_out%add('SmootherType->istt',istt_list(ismoother))
         CALL params_out%add('SmootherType->istp',istp_list(ismoother))
@@ -615,17 +643,20 @@ MODULE SmootherTypes
                             MPI_Comm_ID_list(ismoother))
         SELECTCASE(smootherMethod_list(ismoother))
           CASE(CBJ)
-            ALLOCATE(SmootherType_PETSc_CBJ :: smootherList(ismoother)%smoother)
+            ALLOCATE(SmootherType_PETSc_CBJ :: &
+              smootherListCollection(iList)%smootherList(ismoother)%smoother)
           CASE DEFAULT
             CALL eSmootherType%raiseDebug(modName//"::"//myName//" - "// &
                 "Unknown smoother method, not allocating smoother for this"// &
                 " level!")
         ENDSELECT
-        IF(ALLOCATED(smootherList(ismoother)%smoother)) &
-          CALL smootherList(ismoother)%smoother%init(params_out)
+        IF(ALLOCATED(smootherListCollection(iList)% &
+                     smootherList(ismoother)%smoother)) &
+          CALL smootherListCollection(iList)%smootherList(ismoother)% &
+            smoother%init(params_out)
       ENDDO
 
-      isSmootherListInit=.TRUE.
+      smootherListCollection(iList)%isSmootherListInit=.TRUE.
 
       DEALLOCATE(istt_list)
       DEALLOCATE(istp_list)
@@ -641,13 +672,17 @@ MODULE SmootherTypes
 !> @brief Initializes the smootherList from a multigrid mesh structure object
 !>
 !> @param params Parameter list with details for each smoother
+!> @param myMMeshes MultigridMeshStructure object to be used to initialize
+!>                  smootherList
+!> @param iList Index of the smootherList to be initialized
 !>
-    SUBROUTINE smootherManager_initFromMMeshes(params,myMMeshes)
+    SUBROUTINE smootherManager_initFromMMeshes(params,myMMeshes,iList)
       CHARACTER(LEN=*),PARAMETER :: myName='smootherManager_initFromMMeshes'
       TYPE(ParamType),INTENT(IN) :: params
       TYPE(MultigridMeshStructureType),INTENT(IN) :: myMMeshes
+      INTEGER(SIK),INTENT(IN) :: iList
 
-      INTEGER(SIK) :: iLevel,num_colors
+      INTEGER(SIK) :: iLevel,num_colors,num_smoothers
       TYPE(ParamType) :: params_out
 
       INTEGER(SIK),ALLOCATABLE :: istt_list(:),istp_list(:)
@@ -659,6 +694,9 @@ MODULE SmootherTypes
       IF(.NOT. params%has('SmootherType->MPI_Comm_ID_list')) &
         CALL eSmootherType%raiseError(modName//"::"//myName//" - "// &
             "Missing MPI_Comm_ID_list from the parameter list!")
+      IF(.NOT. params%has('SmootherType->blk_size_list')) &
+        CALL eSmootherType%raiseError(modName//"::"//myName//" - "// &
+            "Missing blk_size_list from the parameter list!")
 
       !Fill out params_out using params and myMMeshes:
       CALL params_out%clear()
@@ -668,19 +706,17 @@ MODULE SmootherTypes
       ELSE
         num_smoothers=myMMeshes%nLevels
       ENDIF
+      smootherListCollection(iList)%num_smoothers=num_smoothers
       CALL params_out%add('SmootherType->num_smoothers',num_smoothers)
       ALLOCATE(istt_list(num_smoothers))
       ALLOCATE(istp_list(num_smoothers))
-      ALLOCATE(blk_size_list(num_smoothers))
       ALLOCATE(smootherMethod_list(num_smoothers))
       DO iLevel=1,myMMeshes%nLevels
         istt_list(iLevel)=myMMeshes%meshes(iLevel)%istt
         istp_list(iLevel)=myMMeshes%meshes(iLevel)%istp
-        blk_size_list(iLevel)=myMMeshes%meshes(iLevel)%num_eqns
       ENDDO
       CALL params_out%add('SmootherType->istt_list',istt_list)
       CALL params_out%add('SmootherType->istp_list',istp_list)
-      CALL params_out%add('SmootherType->blk_size_list',blk_size_list)
       IF(params%has('SmootherType->smootherMethod_list')) THEN
         CALL params%get('SmootherType->smootherMethod_list',smootherMethod_list)
       ELSE
@@ -691,8 +727,12 @@ MODULE SmootherTypes
                           smootherMethod_list)
       DEALLOCATE(istt_list)
       DEALLOCATE(istp_list)
-      DEALLOCATE(blk_size_list)
       DEALLOCATE(smootherMethod_list)
+
+      ALLOCATE(blk_size_list(num_smoothers))
+      CALL params%get('SmootherType->blk_size_list',blk_size_list)
+      CALL params_out%add('SmootherType->blk_size_list',blk_size_list)
+      DEALLOCATE(blk_size_list)
 
       IF(params%has('SmootherType->blockMethod_list')) THEN
         ALLOCATE(blockMethod_list(num_smoothers))
@@ -712,18 +752,21 @@ MODULE SmootherTypes
       CALL params_out%add('SmootherType->MPI_Comm_ID_list',MPI_Comm_ID_list)
       DEALLOCATE(MPI_Comm_ID_list)
 
-      CALL smootherManager_init(params_out)
+      CALL smootherManager_init(params_out,iList)
 
       !Define red-black coloring for colored smoothers:
       DO iLevel=1,myMMeshes%nLevels
-        IF(ALLOCATED(smootherList(ilevel)%smoother)) THEN
-          SELECTTYPE(smoother => smootherList(iLevel)%smoother)
+        IF(ALLOCATED(smootherListCollection(iList)% &
+                     smootherList(ilevel)%smoother)) THEN
+          SELECTTYPE(smoother => smootherListCollection(iList)% &
+                                 smootherList(iLevel)%smoother)
             TYPE IS(SmootherType_PETSc_CBJ)
               num_colors=smoother%colorManager%num_colors
               ALLOCATE(color_ids(myMMeshes%meshes(iLevel)%istt: &
                                  myMMeshes%meshes(iLevel)%istp))
-              color_ids=MOD(myMMeshes%meshes(iLevel)%interpDegrees,num_colors)+1
-              CALL smootherManager_defineAllColors(iLevel,color_ids)
+              color_ids=MOD(myMMeshes%meshes(iLevel)%interpDegrees, &
+                            num_colors)+1
+              CALL smootherManager_defineAllColors(iList,iLevel,color_ids)
               DEALLOCATE(color_ids)
           ENDSELECT
         ENDIF
@@ -735,13 +778,15 @@ MODULE SmootherTypes
 !-------------------------------------------------------------------------------
 !> @brief Fill out an index list for a particular color
 !>
+!> @param iList smootherListCollection index of the smootherList
 !> @param ismoother smootherList index of the smoother
 !> @param icolor Color being defined
 !> @param index_list list of indices for color icolor
 !>
-    SUBROUTINE smootherManager_defineColor(ismoother,icolor,index_list)
+    SUBROUTINE smootherManager_defineColor(iList,ismoother,icolor,index_list)
       CHARACTER(LEN=*),PARAMETER :: myName='smootherManager_defineColor'
       INTEGER(SIK),INTENT(IN) :: ismoother
+      INTEGER(SIK),INTENT(IN) :: iList
       INTEGER(SIK),INTENT(IN) :: icolor
       INTEGER(SIK),INTENT(IN) :: index_list(:)
 
@@ -751,15 +796,17 @@ MODULE SmootherTypes
       PetscErrorCode :: iperr
 #endif
 
-      IF(.NOT. isSmootherListInit) &
+      IF(.NOT. smootherListCollection(iList)%isSmootherListInit) &
         CALL eSmootherType%raiseError(modName//"::"//myName//" - "// &
             "Smoother list has not been initialized!")
 
-      IF(ismoother < 1_SIK .OR. ismoother > num_smoothers) &
+      IF(ismoother < 1_SIK .OR. &
+         ismoother > smootherListCollection(iList)%num_smoothers) &
         CALL eSmootherType%raiseError(modName//"::"//myName//" - "// &
             "Invalid smoother ID!")
 
-      SELECTTYPE(smoother => smootherList(ismoother)%smoother)
+      SELECTTYPE(smoother => smootherListCollection(iList)% &
+                             smootherList(ismoother)%smoother)
         TYPE IS(SmootherType_PETSc_CBJ)
           ASSOCIATE(manager=>smoother%colorManager)
             IF(.NOT. manager%isInit) &
@@ -795,12 +842,14 @@ MODULE SmootherTypes
 !-------------------------------------------------------------------------------
 !> @brief Provide the color_ids to fill out the index_lists for all the colors
 !>
+!> @param iList smootherListCollection index of the smootherList
 !> @param ismoother smootherList index of the smoother
 !> @param color_ids List of colors for each point, must have bounds
 !>         solver%istt:solver%istp
 !>
-    SUBROUTINE smootherManager_defineAllColors(ismoother,color_ids)
+    SUBROUTINE smootherManager_defineAllColors(iList,ismoother,color_ids)
       CHARACTER(LEN=*),PARAMETER :: myName='defineAllColors_ColorManagerType'
+      INTEGER(SIK),INTENT(IN) :: iList
       INTEGER(SIK),INTENT(IN) :: ismoother
       INTEGER(SIK),INTENT(IN),ALLOCATABLE :: color_ids(:)
 
@@ -810,15 +859,17 @@ MODULE SmootherTypes
       PetscErrorCode :: iperr
 #endif
 
-      IF(.NOT. isSmootherListInit) &
+      IF(.NOT. smootherListCollection(iList)%isSmootherListInit) &
         CALL eSmootherType%raiseError(modName//"::"//myName//" - "// &
             "Smoother list has not been initialized!")
 
-      IF(ismoother < 1_SIK .OR. ismoother > num_smoothers) &
+      IF(ismoother < 1_SIK .OR. &
+          ismoother > smootherListCollection(iList)%num_smoothers) &
         CALL eSmootherType%raiseError(modName//"::"//myName//" - "// &
             "Invalid smoother ID!")
 
-      SELECTTYPE(smoother => smootherList(ismoother)%smoother)
+      SELECTTYPE(smoother => smootherListCollection(iList)% &
+                             smootherList(ismoother)%smoother)
         TYPE IS(SmootherType_PETSc_CBJ)
           ASSOCIATE(manager=>smoother%colorManager)
             manager%color_ids=color_ids
@@ -835,7 +886,8 @@ MODULE SmootherTypes
 
             !Allocate based on # of indices for each color:
             DO icolor=1,manager%num_colors
-              ALLOCATE(manager%colors(icolor)%index_list(manager%istp-manager%istt+1))
+              ALLOCATE(manager%colors(icolor)% &
+                       index_list(manager%istp-manager%istt+1))
             ENDDO
 
             !Fill out index lists for each color:
@@ -853,7 +905,8 @@ MODULE SmootherTypes
 #ifdef FUTILITY_HAVE_PETSC
             IF(smoother%isKSPSetup) THEN
               !TODO: more smoother steps per iteration
-              !TODO need to put this in a different place... KSP is not always set up by this point
+              !TODO need to put this in a different place...
+              !     KSP is not always set up by this point
               CALL KSPSetTolerances(smoother%ksp,0.0_SRK,0.0_SRK,1E8_SRK, &
                                     smoother%colorManager%num_colors,iperr)
             ENDIF
@@ -871,17 +924,22 @@ MODULE SmootherTypes
 !> @brief Request that the LU factorization be updated.  This needs to be
 !>        called every time the diagonal blocks of a matrix are changed.
 !>
-    SUBROUTINE smootherManager_requestAllBlocksUpdate
+!> @param iList smootherListCollection index of the smootherList
+!>
+    SUBROUTINE smootherManager_requestAllBlocksUpdate(iList)
       CHARACTER(LEN=*),PARAMETER :: myName='smootherManager_requestAllBlocksUpdate'
+      INTEGER(SIK),INTENT(IN) :: iList
       INTEGER(SIK) :: ismoother
 
-      IF(.NOT. isSmootherListInit) &
+      IF(.NOT. smootherListCollection(iList)%isSmootherListInit) &
         CALL eSmootherType%raiseError(modName//"::"//myName//" - "// &
             "Smoother list has not been initialized!")
 
-      DO ismoother=1,num_smoothers
-        IF(ALLOCATED(smootherList(ismoother)%smoother)) THEN
-          SELECTTYPE(smoother=>smootherList(ismoother)%smoother)
+      DO ismoother=1,smootherListCollection(iList)%num_smoothers
+        IF(ALLOCATED(smootherListCollection(iList)% &
+                     smootherList(ismoother)%smoother)) THEN
+          SELECTTYPE(smoother => smootherListCollection(iList)% &
+                                 smootherList(ismoother)%smoother)
             TYPE IS(SmootherType_PETSc_CBJ)
               smoother%blocksNeedUpdate=.TRUE.
           ENDSELECT
@@ -904,7 +962,7 @@ MODULE SmootherTypes
       PC,INTENT(INOUT) :: pc
       PetscErrorCode,INTENT(INOUT) :: iperr
 
-      INTEGER(SIK) :: smootherID,nnz
+      INTEGER(SIK) :: listID,smootherID,nnz
       INTEGER(SIK) :: localrowstart,localrowend,localcolind,rowstart
       INTEGER(SIK) :: blockrowind,blockcolind
       TYPE(C_PTR) :: ctx_ptr
@@ -926,9 +984,11 @@ MODULE SmootherTypes
       !Get the smoother ID:
       CALL PCShellGetContext(pc,ctx_ptr,iperr)
       CALL C_F_POINTER(ctx_ptr,ctx,(/1/))
-      smootherID=ctx(1)
+      listID=ctx(1)/MAX_SMOOTHERS_PER_LIST
+      smootherID=MOD(ctx(1),MAX_SMOOTHERS_PER_LIST)
 
-      SELECTTYPE(smoother=>smootherList(smootherID)%smoother);
+      SELECTTYPE(smoother => smootherListCollection(listID)% &
+          smootherList(smootherID)%smoother)
         TYPE IS(SmootherType_PETSc_CBJ)
           IF(.NOT. smoother%isInit) &
             CALL eSmootherType%raiseError(modName//"::"//myName//" - "// &
@@ -1043,7 +1103,7 @@ MODULE SmootherTypes
       Vec,INTENT(INOUT) :: xin,xout
       PetscErrorCode,INTENT(INOUT) :: iperr
 
-      INTEGER(SIK) :: smootherID,nlocal
+      INTEGER(SIK) :: listID,smootherID,nlocal
       TYPE(C_PTR) :: ctx_ptr
       PetscInt,POINTER :: ctx(:)
       PetscReal,POINTER :: xin_vals(:),xout_vals(:)
@@ -1054,9 +1114,11 @@ MODULE SmootherTypes
       !Get the smoother ID:
       CALL PCShellGetContext(pc,ctx_ptr,iperr)
       CALL C_F_POINTER(ctx_ptr,ctx,(/1/))
-      smootherID=ctx(1)
+      listID=ctx(1)/MAX_SMOOTHERS_PER_LIST
+      smootherID=MOD(ctx(1),MAX_SMOOTHERS_PER_LIST)
 
-      SELECTTYPE(smoother=>smootherList(smootherID)%smoother)
+      SELECTTYPE(smoother => smootherListCollection(listID)% &
+          smootherList(smootherID)%smoother)
         TYPE IS(SmootherType_PETSc_CBJ)
           IF(.NOT. smoother%isInit) &
             CALL eSmootherType%raiseError(modName//"::"//myName//" - "// &
