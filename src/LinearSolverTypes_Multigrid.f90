@@ -605,6 +605,8 @@ MODULE LinearSolverTypes_Multigrid
       ENDIF
 
       solver%isMultigridSetup=.TRUE.
+
+      DEALLOCATE(smootherMethod_list)
 #else
       CALL eLinearSolverType%raiseError('Incorrect call to '// &
         modName//'::'//myName//' - This subroutine can only be called if '// &
@@ -845,8 +847,8 @@ MODULE LinearSolverTypes_Multigrid
         DO ichild=1,2*interpdegree
           ipn=myMesh%mmData(ip)%childIndices(ichild)
           IF(ipn < 1) CYCLE
-          !parentwt2=parentwt/(2*interpdegree)
-          parentwt2=myWts%wts_point(ip)%wts(:,ichild)*parentwt
+          parentwt2=parentwt/(2*interpdegree)
+          !parentwt2=myWts%wts_point(ip)%wts(:,ichild)*parentwt
           CALL collectWtsAndIndices(myMesh,myWts,ipn,indices,wts, &
                  myMesh%interpDegrees(ipn),counter,parentwt2)
         ENDDO
