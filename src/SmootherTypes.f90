@@ -380,11 +380,16 @@ MODULE SmootherTypes
       CALL params%get('SmootherType->blk_size',smoother%blk_size)
       CALL params%get('SmootherType->MPI_Comm_ID',MPI_Comm_ID)
 
-      MPI_Comm_ID=-1_SIK
-      IF(MPI_Comm_ID /= -1_SIK) THEN
+      !MPI_Comm_ID=-1
+      IF(MPI_Comm_ID /= -1) THEN
         CALL smoother%MPIparallelEnv%init(MPI_Comm_ID)
       ELSE
+#ifdef HAVE_MPI
         CALL smoother%MPIparallelEnv%init(MPI_COMM_WORLD)
+#else
+        CALL eSmootherType%raiseError(modName//"::"//myName//" - "// &
+          "MPI_Comm_ID is nonnegative but MPI is not enabled")
+#endif
       ENDIF
 
       smoother%smootherMethod=CBJ
