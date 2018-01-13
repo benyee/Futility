@@ -45,7 +45,6 @@ MODULE LinearSolverTypes_Multigrid
   USE MatrixTypes
   USE LinearSolverTypes
   USE MultigridMesh
-  USE SmootherTypes
   IMPLICIT NONE
   PRIVATE
 
@@ -67,7 +66,7 @@ MODULE LinearSolverTypes_Multigrid
   !Krylov smoother/solver options:
   PUBLIC :: BICGSTAB,GMRES
   !Fixed point smoother options:
-  PUBLIC :: SOR,BJACOBI,JACOBI,CBJ
+  PUBLIC :: SOR,BJACOBI,JACOBI
   !Direct solver options:
   PUBLIC :: LU
 
@@ -561,7 +560,6 @@ MODULE LinearSolverTypes_Multigrid
 
       IF(Params%has('LinearSolverType->Multigrid->num_smooth')) THEN
         CALL Params%get('LinearSolverType->Multigrid->num_smooth',num_smooth)
-        !TODO For CBJ do we have to multiply this by the number of colors?
         CALL PCMGSetNumberSmoothDown(solver%pc,num_smooth,iperr)
         CALL PCMGSetNumberSmoothUp(solver%pc,num_smooth,iperr)
       ENDIF
@@ -658,16 +656,7 @@ MODULE LinearSolverTypes_Multigrid
       DO i=istt,istp
         CALL PCMGGetSmoother(solver%pc,i,ksp_temp,iperr)
 
-        IF(smoother == CBJ) THEN
-          IF(smootherListCollection(solver%smootherListID) &
-              %isSmootherListInit) THEN
-            CALL smootherManager_setKSP(solver%smootherListID,i+1,ksp_temp)
-          ELSE
-            CALL eLinearSolverType%raiseError(modName//"::"//myName//" - "// &
-              "Smoother list must be initialized before any smoothers can "// &
-              "be set to CBJ!")
-          ENDIF
-        ELSEIF(smoother == SOR) THEN
+        IF(smoother == SOR) THEN
           CALL KSPSetType(ksp_temp,KSPRICHARDSON,iperr)
           CALL KSPGetPC(ksp_temp,pc_temp,iperr)
           CALL PCSetType(pc_temp,PCSOR,iperr)

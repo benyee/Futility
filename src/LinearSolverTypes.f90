@@ -110,7 +110,7 @@ MODULE LinearSolverTypes
   INTEGER(SIK),PARAMETER :: MAX_IT_SOLVER_METHODS=9
   !> set enumeration scheme for iterative solver methods
   INTEGER(SIK),PARAMETER,PUBLIC :: BICGSTAB=1,CGNR=2,GMRES=3,MULTIGRID=4, &
-                                   SOR=5,ILU=6,BJACOBI=7,JACOBI=8,CBJ=9
+                                   SOR=5,ILU=6,BJACOBI=7,JACOBI=8
   !> Number of direct solver solution methodologies - for error checking
   INTEGER(SIK),PARAMETER :: MAX_DIRECT_SOLVER_METHODS=3
   !> set enumeration scheme for direct solver methods
