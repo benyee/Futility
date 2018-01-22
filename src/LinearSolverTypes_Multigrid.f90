@@ -424,7 +424,7 @@ MODULE LinearSolverTypes_Multigrid
 !>
     SUBROUTINE fillInterpMats_LinearSolverType_Multigrid(solver,myMMeshes, &
                  myWtStructure,preallocated)
-      CHARACTER(LEN=*),PARAMETER :: myName='setupPETScMG_LinearSolverType_Multigrid'
+      CHARACTER(LEN=*),PARAMETER :: myName='fillInterpMats_LinearSolverType_Multigrid'
       CLASS(LinearSolverType_Multigrid),INTENT(INOUT) :: solver
       TYPE(MultigridMeshStructureType),POINTER,INTENT(IN) :: myMMeshes
       TYPE(InterpWeightsStructureType),POINTER,INTENT(IN) :: myWtStructure
