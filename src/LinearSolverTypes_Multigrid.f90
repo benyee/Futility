@@ -805,7 +805,7 @@ MODULE LinearSolverTypes_Multigrid
         ENDIF
       ENDDO
 
-    ENDSUBROUTINE
+    ENDSUBROUTINE getFinalWtsAndIndices
 !
 !-------------------------------------------------------------------------------
 !> @brief Extracts the weights and neighbor indices for a given point on a mesh
@@ -846,7 +846,7 @@ MODULE LinearSolverTypes_Multigrid
         ENDDO
       ENDIF
 
-    ENDSUBROUTINE
+    ENDSUBROUTINE collectWtsAndIndices
 !
 !-------------------------------------------------------------------------------
 !> @brief Resets the operators on each multigrid level for PCMG and then calls
