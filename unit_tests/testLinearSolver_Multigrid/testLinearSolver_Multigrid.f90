@@ -76,6 +76,7 @@ PROGRAM testLinearSolver_Multigrid
   REGISTER_SUBTEST('testIterativeSolve_Multigrid',testIterativeSolve_Multigrid)
   REGISTER_SUBTEST('testSetSmoother',testSetSmoother)
   REGISTER_SUBTEST('testSoftReset',testSoftReset)
+  REGISTER_SUBTEST('testSetInterp',testSetInterp)
 
   FINALIZE_TEST()
 
@@ -616,6 +617,78 @@ CONTAINS
 #endif
 
     ENDSUBROUTINE testSoftReset
+!
+!-------------------------------------------------------------------------------
+! This subroutine tests solving two linear systems with the same interp. matrices
+    SUBROUTINE testSetInterp
+      TYPE(LinearSolverType_Multigrid) :: thisLS,thisLS2
+      REAL(SRK),ALLOCATABLE :: soln(:),soln2(:)
+      REAL(SRK),POINTER :: x(:)
+      LOGICAL(SBK) :: match
+
+      INTEGER(SIK),PARAMETER :: n=65_SNK
+
+#ifdef FUTILITY_HAVE_PETSC
+#ifdef HAVE_MPI
+      IF(mpiTestEnv%master) THEN
+#endif
+        CALL init_MultigridLS(thisLS)
+        CALL init_MultigridLS(thisLS2)
+
+        ! Create solution:
+        ALLOCATE(soln(n))
+        soln=1.0_SRK
+        soln(n/3)=2.0_SRK
+        CALL setupLinearProblem_1D1G(thisLS,soln)
+        ! Create solution:
+        ALLOCATE(soln2(n))
+        soln2=1.0_SRK
+        CALL setupLinearProblem_1D1G(thisLS2,soln2)
+
+        CALL preAllocInterpMatrices_1D1G(thisLS)
+        CALL setupInterpMatrices_1D1G(thisLS)
+        ! Reuse interp matrices:
+        CALL thisLS2%setInterp(thisLS%interpMats_PETSc)
+
+        CALL thisLS%setupPETScMG(pList)
+        CALL thisLS2%setupPETScMG(pList)
+
+        !set iterations and convergence information and build/set M
+        CALL thisLS%setConv(2,1.0E-9_SRK,1000,30)
+        CALL thisLS2%setConv(2,1.0E-9_SRK,1000,30)
+
+        ! build x0
+        ALLOCATE(x(n))
+        x(1:(n-1)/2)=0.5_SRK
+        x((n+1)/2:n)=1.1_SRK
+        CALL thisLS%setX0(x)
+        CALL thisLS2%setX0(x)
+        !solve it
+        CALL thisLS%solve()
+        CALL thisLS2%solve()
+        SELECTTYPE(LS_x => thisLS%X); TYPE IS(PETScVectorType)
+          CALL LS_x%getAll(x)
+        ENDSELECT
+        match=ALL(ABS(x-soln) < 1.0E-6_SRK)
+        SELECTTYPE(LS_x => thisLS2%X); TYPE IS(PETScVectorType)
+          CALL LS_x%getAll(x)
+        ENDSELECT
+        match=match .AND. ALL(ABS(x-soln2) < 1.0E-6_SRK)
+        ASSERT(match, 'testSetInterp()')
+
+        DEALLOCATE(soln2)
+        DEALLOCATE(soln)
+        DEALLOCATE(x)
+        CALL thisLS%A%clear()
+        CALL thisLS%clear()
+        CALL thisLS2%A%clear()
+        CALL thisLS2%clear()
+#ifdef HAVE_MPI
+      ENDIF
+      CALL mpiTestEnv%barrier()
+#endif
+#endif
+    ENDSUBROUTINE testSetInterp
 !
 !-------------------------------------------------------------------------------
     SUBROUTINE init_MultigridLS(thisLS,num_eqns_in,nx_in,ny_in,nz_in,nprocs_in, &

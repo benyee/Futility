@@ -116,6 +116,9 @@ MODULE LinearSolverTypes_Multigrid
       !> @copybrief  LinearSolverType_Multigrid::updatedA_LinearSolverType_Multigrid
       !> @copydetails LinearSolverType_Multigrid::updatedA_LinearSolverType_Multigrid
       PROCEDURE,PASS :: updatedA => updatedA_LinearSolverType_Multigrid
+      !> @copybrief  LinearSolverType_Multigrid::setInterp_LinearSolverType_Multigrid
+      !> @copydetails LinearSolverType_Multigrid::setInterp_LinearSolverType_Multigrid
+      PROCEDURE,PASS :: setInterp => setInterp_LinearSolverType_Multigrid
   ENDTYPE LinearSolverType_Multigrid
 
   !> Logical flag to check whether the required and optional parameter lists
@@ -878,5 +881,30 @@ MODULE LinearSolverTypes_Multigrid
       CALL solver%LinearSolverType_Iterative%updatedA()
 
     ENDSUBROUTINE updatedA_LinearSolverType_Multigrid
+!
+!-------------------------------------------------------------------------------
+!> @brief Sets solver's PETSc interp matrix array pointer to an existing array
+!> @param solver The linear solver to act on
+!> @param interpMats List of PETSc interpolation matrices.
+!>
+    SUBROUTINE setInterp_LinearSolverType_Multigrid(solver,interpMats)
+      CHARACTER(LEN=*),PARAMETER :: myName='setInterp_LinearSolverType_Multigrid'
+      CLASS(LinearSolverType_Multigrid),INTENT(INOUT) :: solver
+      TYPE(PETScMatrixType),POINTER,INTENT(IN) :: interpMats(:)
+
+#ifdef FUTILITY_HAVE_PETSC
+      IF(.NOT. ASSOCIATED(interpMats)) &
+        CALL eLinearSolverType%raiseError(modName//"::"//myName//" - "// &
+          "Attempt to set interpMats_PETSc with an unassociated pointer!")
+      IF(solver%isOwnerOfInterpMats) THEN
+        CALL eLinearSolverType%raiseError(modName//"::"//myName//" - "// &
+          "This instance of solver already owns a set of interp matrices!")
+      ELSE IF(ASSOCIATED(solver%interpMats_PETSc)) THEN
+        NULLIFY(solver%interpMats_PETSc)
+      ENDIF
+      solver%interpMats_PETSc => interpMats
+#endif
+
+    ENDSUBROUTINE setInterp_LinearSolverType_Multigrid
 
 ENDMODULE LinearSolverTypes_Multigrid
