@@ -85,8 +85,10 @@ MODULE LinearSolverTypes_Multigrid
     INTEGER(SIK),ALLOCATABLE :: level_info_local(:,:)
 #ifdef FUTILITY_HAVE_PETSC
     !> Array of PETSc interpolation matrices
-    TYPE(PETScMatrixType),ALLOCATABLE :: interpMats_PETSc(:)
+    TYPE(PETScMatrixType),POINTER :: interpMats_PETSc(:) => NULL()
 #endif
+    !> Whether or not the matrix was allocated on this object:
+    LOGICAL(SBK) :: isOwnerOfInterpMats=.FALSE.
 
     CONTAINS
       !> @copybrief LinearSolverType_Multigrid::init_LinearSolverType_Multigrid
@@ -316,9 +318,7 @@ MODULE LinearSolverTypes_Multigrid
                  'npts,num_eqns')
         ENDIF
 
-#ifdef FUTILITY_HAVE_PETSC
-        ALLOCATE(solver%interpMats_PETSc(solver%nLevels-1))
-#endif
+        solver%isOwnerOfInterpMats=.FALSE.
       ELSE
         CALL eLinearSolverType%raiseError('Incorrect call to '// &
           modName//'::'//myName//' - LinearSolverType already initialized')
@@ -437,15 +437,19 @@ MODULE LinearSolverTypes_Multigrid
 
       INTEGER(SIK),ALLOCATABLE :: dnnz(:)
 
-#ifdef FUTILITY_HAVE_PETSC
       IF(solver%TPLType /= PETSC) &
         CALL eLinearSolverType%raiseError('Incorrect call to '// &
           modName//'::'//myName//' - This subroutine does not have a '// &
           'non-PETSc implementation yet.')
 
-      IF(solver%nLevels /= myMMeshes%nLevels) &
+#ifdef FUTILITY_HAVE_PETSC
+      IF(ASSOCIATED(solver%interpMats_PETSc)) THEN
         CALL eLinearSolverType%raiseError('Incorrect call to '// &
-          modName//'::'//myName//' - Mismatch in grid and solver nLevels.')
+          modName//'::'//myName//' - interp. matrices already associated!')
+      ELSE
+        ALLOCATE(solver%interpMats_PETSc(solver%nLevels-1))
+        solver%isOwnerOfInterpMats=.TRUE.
+      ENDIF
 
       DO iLevel=solver%nLevels,2,-1
         num_eqns=myWtStructure%wts_level(iLevel)%num_eqns
@@ -552,6 +556,9 @@ MODULE LinearSolverTypes_Multigrid
       CALL PCMGSetLevels(solver%pc,solver%nLevels,PETSC_NULL_OBJECT,iperr)
 
       !Need a smoother on all levels except the coarsest:
+      IF(.NOT. ASSOCIATED(solver%interpMats_PETSc)) &
+        CALL eLinearSolverType%raiseError(modName//'::'//myName// &
+          ' - Cannot setup without interpolation operators!')
       DO iLevel=solver%nLevels-1,1,-1
         CALL solver%setSmoother(smootherMethod_list(iLevel+1),iLevel)
 
@@ -585,7 +592,6 @@ MODULE LinearSolverTypes_Multigrid
         CALL Params%get('LinearSolverType->Multigrid->cg_tol',cg_tol)
         IF(cg_tol > 0.0_SRK) &
           CALL KSPSetNormType(ksp_temp,KSP_NORM_PRECONDITIONED,iperr)
-      ELSE
       ENDIF
       CALL KSPSetTolerances(ksp_temp,cg_tol,cg_tol,1.E3_SRK,cg_solver_its,iperr)
       CALL KSPGMRESSetRestart(ksp_temp,cg_solver_its,iperr)
@@ -745,7 +751,14 @@ MODULE LinearSolverTypes_Multigrid
         ENDDO
       ENDIF
 
-      IF(ALLOCATED(solver%interpMats_PETSc)) DEALLOCATE(solver%interpMats_PETSc)
+      IF(ASSOCIATED(solver%interpMats_PETSc)) THEN
+        IF(solver%isOwnerOfInterpMats) THEN
+          DEALLOCATE(solver%interpMats_PETSc)
+        ELSE
+          NULLIFY(solver%interpMats_PETSc)
+        ENDIF
+      ENDIF
+      solver%isOwnerOfInterpMats=.FALSE.
 #endif
 
       solver%isMultigridSetup=.FALSE.
@@ -854,6 +867,7 @@ MODULE LinearSolverTypes_Multigrid
 !> @param solver The linear solver to act on
 !>
     SUBROUTINE updatedA_LinearSolverType_Multigrid(solver)
+      CHARACTER(LEN=*),PARAMETER :: myName='updatedA_LinearSolverType_Multigrid'
       CLASS(LinearSolverType_Multigrid),INTENT(INOUT) :: solver
 #ifdef FUTILITY_HAVE_PETSC
       PetscErrorCode  :: iperr

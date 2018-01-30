@@ -152,7 +152,7 @@ CONTAINS
           .OR. ALLOCATED(thisLS%level_info)                               &
           .OR. ALLOCATED(thisLS%level_info_local)                         &
 #ifdef FUTILITY_HAVE_PETSC
-          .OR. ALLOCATED(thisLS%interpMats_PETSc)                         &
+          .OR. ASSOCIATED(thisLS%interpMats_PETSc)                        &
 #endif
           .OR. thisLS%isMultigridSetup
       ASSERT(.NOT.(bool),'CALL Multigrid%clear() FAILED!')
@@ -705,6 +705,10 @@ CONTAINS
       INTEGER(SIK),ALLOCATABLE :: dnnz(:),onnz(:)
 
 #ifdef FUTILITY_HAVE_PETSC
+      IF(.NOT.ASSOCIATED(thisLS%interpMats_PETSc)) THEN
+        ALLOCATE(thisLS%interpMats_PETSc(thisLS%nLevels-1))
+        thisLS%isOwnerOfInterpMats=.TRUE.
+      ENDIF
       nx=thisLS%level_info(2,thisLS%nLevels)
       DO iLevel=thisLS%nLevels-1,1,-1
         !Create the interpolation operator:
@@ -760,6 +764,10 @@ CONTAINS
       INTEGER(SIK),ALLOCATABLE :: dnnz(:),onnz(:)
 
 #ifdef FUTILITY_HAVE_PETSC
+      IF(.NOT.ASSOCIATED(thisLS%interpMats_PETSc)) THEN
+        ALLOCATE(thisLS%interpMats_PETSc(thisLS%nLevels-1))
+        thisLS%isOwnerOfInterpMats=.TRUE.
+      ENDIF
       nx=thisLS%level_info_local(2,thisLS%nLevels)
       DO iLevel=thisLS%nLevels-1,1,-1
         !Create the interpolation operator:
