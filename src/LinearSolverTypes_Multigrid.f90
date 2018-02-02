@@ -678,6 +678,10 @@ MODULE LinearSolverTypes_Multigrid
           CALL KSPSetType(ksp_temp,KSPGMRES,iperr)
           CALL KSPGetPC(ksp_temp,pc_temp,iperr)
           CALL PCSetType(pc_temp,PCBJACOBI,iperr)
+        ELSEIF(smoother == BICGSTAB) THEN
+          CALL KSPSetType(ksp_temp,KSPBCGS,iperr)
+          CALL KSPGetPC(ksp_temp,pc_temp,iperr)
+          CALL PCSetType(pc_temp,PCBJACOBI,iperr)
         ELSEIF(smoother == LU) THEN
         !We might want to loosen this to allow SUPERLU_MT (superLU for shared
         !  memory architectures)
