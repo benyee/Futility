@@ -600,8 +600,7 @@ MODULE LinearSolverTypes_Multigrid
       CALL KSPGMRESSetRestart(ksp_temp,cg_solver_its,iperr)
 
       !Default multigrid tolerance:
-      CALL KSPSetTolerances(solver%ksp,1.E-6_SRK,1.E-6_SRK,1.E3_SRK, &
-                                       10_SIK,iperr)
+      CALL KSPSetTolerances(solver%ksp,1.E-6_SRK,1.E-6_SRK,1.E3_SRK,5,iperr)
 
       !Set cycle type to V:
       CALL PCMGSetCycleType(solver%pc,PC_MG_CYCLE_V,iperr)
@@ -613,6 +612,9 @@ MODULE LinearSolverTypes_Multigrid
           CALL PCSetFromOptions(solver%pc,iperr)
         ENDIF
       ENDIF
+
+      !No smoothup:
+      !CALL PCMGSetNumberSmoothUp(solver%pc,0,iperr)
 
       solver%isMultigridSetup=.TRUE.
 
