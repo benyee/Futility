@@ -587,7 +587,7 @@ MODULE LinearSolverTypes_Multigrid
         cg_solver_its=MIN(cg_solver_its,PRODUCT(solver%level_info(:,1)))
       ELSE
         !Some reasonable number of GMRES iterations:
-        cg_solver_its=CEILING(SQRT(PRODUCT(solver%level_info(:,1))+0._SRK))
+        cg_solver_its=15!CEILING(SQRT(PRODUCT(solver%level_info(:,1))+0._SRK))
       ENDIF
       CALL PCMGGetSmoother(solver%pc,0,ksp_temp,iperr)
       cg_tol=1.E-10_SRK
@@ -600,7 +600,7 @@ MODULE LinearSolverTypes_Multigrid
       CALL KSPGMRESSetRestart(ksp_temp,cg_solver_its,iperr)
 
       !Default multigrid tolerance:
-      CALL KSPSetTolerances(solver%ksp,1.E-10_SRK,1.E-10_SRK,1.E3_SRK, &
+      CALL KSPSetTolerances(solver%ksp,1.E-6_SRK,1.E-6_SRK,1.E3_SRK, &
                                        10_SIK,iperr)
 
       !Set cycle type to V:
