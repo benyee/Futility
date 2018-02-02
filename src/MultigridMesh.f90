@@ -373,13 +373,13 @@ MODULE MultigridMesh
       myWts%num_eqns=num_eqns
 
       !TODO turn on option for flat weights to save on memory cost
-      ALLOCATE(myWts%wts_point(meshes%istt:meshes%istp))
-      DO i=meshes%istt,meshes%istp
-        IF(meshes%interpDegrees(i) > 0) THEN
-          !ALLOCATE(myWts%wts_point(i)%wts(num_eqns,meshes%interpDegrees(i)*2))
-          !myWts%wts_point(i)%wts=1.0_SRK/(2*meshes%interpDegrees(i))
-        ENDIF
-      ENDDO
+      !ALLOCATE(myWts%wts_point(meshes%istt:meshes%istp))
+      !DO i=meshes%istt,meshes%istp
+      !  IF(meshes%interpDegrees(i) > 0) THEN
+      !    ALLOCATE(myWts%wts_point(i)%wts(num_eqns,meshes%interpDegrees(i)*2))
+      !    myWts%wts_point(i)%wts=1.0_SRK/(2*meshes%interpDegrees(i))
+      !  ENDIF
+      !ENDDO
 
     ENDSUBROUTINE init_InterpWeightsLevel
 !
