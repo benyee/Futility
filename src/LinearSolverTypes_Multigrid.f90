@@ -76,8 +76,6 @@ MODULE LinearSolverTypes_Multigrid
     INTEGER(SIK) :: nLevels=1
     !> Whether or not the restriciton, interpolation, and smoothing is ready:
     LOGICAL(SBK) :: isMultigridSetup=.FALSE.
-    !> List ID of corresponding list of smoothers in the smoother manager:
-    INTEGER(SIK) :: smootherListID=-1
     !> Size of each grid. level_info(:,level) = (/num_eqns,npts/)
     INTEGER(SIK),ALLOCATABLE :: level_info(:,:)
     !> Size of each grid locally.
@@ -85,6 +83,7 @@ MODULE LinearSolverTypes_Multigrid
     INTEGER(SIK),ALLOCATABLE :: level_info_local(:,:)
 #ifdef FUTILITY_HAVE_PETSC
     !> Array of PETSc interpolation matrices
+    !TODO make this a pointer, make a variable to track ownership
     TYPE(PETScMatrixType),POINTER :: interpMats_PETSc(:) => NULL()
 #endif
     !> Whether or not the matrix was allocated on this object:
@@ -194,13 +193,6 @@ MODULE LinearSolverTypes_Multigrid
       !pull size from source vector
       CALL validParams%get('LinearSolverType->b->VectorType->n',n)
       CALL validParams%get('LinearSolverType->b->VectorType->nlocal',nlocal)
-
-      IF(validParams%has('LinearSolverType->Multigrid->smootherListID')) THEN
-        CALL validParams%get('LinearSolverType->Multigrid->smootherListID', &
-                             solver%smootherListID)
-      ELSE
-        solver%smootherListID=1
-      ENDIF
 
       CALL validParams%clear()
 
