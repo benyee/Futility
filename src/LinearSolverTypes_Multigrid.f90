@@ -609,7 +609,12 @@ MODULE LinearSolverTypes_Multigrid
       IF(Params%has('LinearSolverType->Multigrid->log_flag')) THEN
         CALL Params%get('LinearSolverType->Multigrid->log_flag',log_flag)
         IF(log_flag) THEN
+#if ((PETSC_VERSION_MAJOR>=3) && (PETSC_VERSION_MINOR>=7))
+          CALL PetscOptionsSetValue(PETSC_NULL_CHARACTER,"-pc_mg_log", &
+                                    PETSC_NULL_CHARACTER,iperr)
+#else
           CALL PetscOptionsSetValue("-pc_mg_log",PETSC_NULL_CHARACTER,iperr)
+#endif
           CALL PCSetFromOptions(solver%pc,iperr)
         ENDIF
       ENDIF
